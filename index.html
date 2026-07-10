@@ -177,13 +177,27 @@ html, body {
             <div class="weather-timeline" id="weather-timeline"></div>
           </div>
           
-          <div class="filter-box">
-            <div id="type-filters">
-              <div class="fbtn on" data-t="all">🔵 すべての状況</div>
-              <div class="fbtn" data-t="目撃">🟡 目撃・痕跡</div>
-              <div class="fbtn" data-t="人身被害">🔴 人身被害</div>
-            </div>
-          </div>
+          <!-- 📅 表示期間フィルター（新設） -->
+<div class="filter-box" style="border-bottom: 1px dashed #e2e8f0; background: #f8fafc;">
+  <div style="font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: 6px;">📅 表示期間</div>
+  <div style="display: flex; gap: 4px;">
+    <div class="fbtn on" data-period="1">1ヶ月</div>
+    <div class="fbtn" data-period="3">3ヶ月</div>
+    <div class="fbtn" data-period="6">6ヶ月</div>
+    <div class="fbtn" data-period="12">1年間</div>
+    <div class="fbtn" data-period="all">全期間</div>
+  </div>
+</div>
+
+<!-- 🔍 状況種別フィルター（元からあるボタン群のクラス名などをそのまま活用） -->
+<div class="filter-box">
+  <div style="font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: 6px;">🔍 状況種別</div>
+  <div style="display: flex; gap: 6px;">
+    <div class="fbtn on" data-t="all">🔵 すべての状況</div>
+    <div class="fbtn" data-t="目撃">🟡 目撃・痕跡</div>
+    <div class="fbtn" data-t="人身被害">🔴 人身被害</div>
+  </div>
+</div>
           
           <div class="list-hdr" id="list-count">0件の情報</div>
           <div class="list-scroll" id="sightings-list"></div>
