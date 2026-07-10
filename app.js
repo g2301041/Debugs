@@ -10,6 +10,8 @@ let nextId = 1;
 let pendingLat = null;
 let pendingLng = null;
 let mapInitialized = false;
+let currentFilterType = 'all';
+let currentPeriod = '1'; // ⭐ 初期表示を「1ヶ月」に設定
 
 window.addEventListener('DOMContentLoaded', () => {
   const now = new Date();
@@ -153,18 +155,47 @@ function setupYearSelect() {
 }
 
 function initEvents() {
-  document.querySelectorAll('#type-filters .fbtn').forEach(btn => {
+  // （既存の爆竹やGPS、雨雲レーダーの処理はそのまま残す）
+  document.getElementById('btn-alarm').onclick = playBearAlarm;
+  document.getElementById('btn-floating-alarm').onclick = playBearAlarm;
+  // ...
+
+  // ------------------------------------------
+  // 📅 【新設】期間フィルターボタンのクリックイベント
+  // ------------------------------------------
+  document.querySelectorAll('.fbtn[data-period]').forEach(btn => {
     btn.onclick = function() {
-      document.querySelectorAll('#type-filters .fbtn').forEach(b => b.className = 'fbtn');
-      currentFilterType = this.getAttribute('data-t');
-      this.classList.add(currentFilterType==='all'?'on':(currentFilterType==='人身被害'?'on-orange':'on-blue'));
+      // 期間用のボタンだけ、一度選択クラス「on」をすべて外す
+      document.querySelectorAll('.fbtn[data-period]').forEach(b => b.classList.remove('on'));
+      // クリックされたボタンに「on」をつける
+      this.classList.add('on');
+      
+      // 選択された期間（1, 3, 6, 12, all）を変数に代入して再描画
+      currentPeriod = this.getAttribute('data-period');
+      
       render();
+      updateAlertBanner();
     };
   });
-  document.getElementById('year-select').onchange = function() { currentFilterYear = this.value; render(); };
-  document.getElementById('open-modal').onclick = () => { document.getElementById('modal-overlay').classList.add('open'); document.getElementById('f-date').value = new Date().toISOString().substring(0,16); initMiniMap(); };
-  document.getElementById('cancel-btn').onclick = closeModal;
-  document.getElementById('submit-btn').onclick = submitPost;
+
+  // ------------------------------------------
+  // 🔍 【最適化】状況種別ボタンのクリックイベント
+  // ------------------------------------------
+  document.querySelectorAll('.fbtn[data-t]').forEach(btn => { 
+    btn.onclick = function() { 
+      // 種別用のボタンだけ、一度クラスをリセット
+      document.querySelectorAll('.fbtn[data-t]').forEach(b => b.className = 'fbtn'); 
+      
+      currentFilterType = this.getAttribute('data-t'); 
+      
+      if (currentFilterType === 'all') this.classList.add('on');
+      else if (currentFilterType === '目撃') this.classList.add('on-orange');
+      else if (currentFilterType === '人身被害') this.classList.add('on-red');
+      
+      render(); 
+      updateAlertBanner(); 
+    }; 
+  });
 }
 
 function closeModal() {
@@ -213,17 +244,85 @@ function submitPost() {
 }
 
 function render() {
-  if (!markers || !map) return;
+  if (!map || !markers) return;
+
   markers.clearLayers();
   const listEl = document.getElementById('sightings-list');
-  const fragment = document.createDocumentFragment();
+  listEl.innerHTML = '';
+  
+  let count = 0;
 
-  const filtered = CSV_DATA.filter(d => {
-    if (!d) return false;
-    const tMatch = (currentFilterType === 'all' || (d["情報種別"] && d["情報種別"].indexOf(currentFilterType) === 0));
-    const yMatch = (currentFilterYear === 'all' || (d["目撃日時"] && d["目撃日時"].indexOf(currentFilterYear) === 0));
-    return tMatch && yMatch;
+  // 最新順（日付の新しい順）にソート
+  const sortedData = [...CSV_DATA].sort((a, b) => {
+    const dateAStr = a["目撃日時"] || a["発生日時"] || "1970/01/01 00:00";
+    const dateBStr = b["目撃日時"] || b["発生日時"] || "1970/01/01 00:00";
+    const timeA = new Date(dateAStr.replace(/-/g, '/')).getTime();
+    const timeB = new Date(dateBStr.replace(/-/g, '/')).getTime();
+    return timeB - timeA;
   });
+
+  // 期間切り替えの計算用タイムスタンプを取得
+  const now = new Date();
+  let cutoffTime = null;
+
+  if (currentPeriod !== 'all') {
+    const monthsToSubtract = parseInt(currentPeriod);
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(now.getMonth() - monthsToSubtract);
+    cutoffTime = cutoffDate.getTime();
+  }
+
+  // ループ処理と絞り込み
+  sortedData.forEach(d => {
+    if (!d) return;
+    
+    const type = d["情報種別"] || "目撃";
+    const dateTime = d["目撃日時"] || d["発生日時"] || "不明";
+    
+    // ① 期間での絞り込み
+    if (cutoffTime !== null) {
+      const itemTime = new Date(dateTime.replace(/-/g, '/')).getTime();
+      if (isNaN(itemTime) || itemTime < cutoffTime) return; // 基準より古ければ非表示
+    }
+
+    // ② 種別での絞り込み
+    if (currentFilterType !== 'all') {
+      if (currentFilterType === '目撃') {
+        if (!type.includes('目撃') && !type.includes('痕跡')) return;
+      } else if (currentFilterType === '人身被害') {
+        if (!type.includes('人身被害')) return;
+      }
+    }
+    
+    count++;
+
+    // （以降、マップピンの生成やリストへの append 処理は既存のままでOKです）
+    const latRaw = d["x(緯度)"] || d["緯度"];
+    const lngRaw = d["y(経度)"] || d["経度"];
+    const lat = parseFloat(latRaw); 
+    const lng = parseFloat(lngRaw);
+
+    if (!isNaN(lat) && !isNaN(lng)) {
+      const col = type.includes('人身') ? '#dc2626' : (type.includes('目撃') ? '#ea580c' : '#64748b');
+      const m = L.circleMarker([lat, lng], { radius: 9, fillColor: col, color: '#fff', weight: 2, fillOpacity: 0.8 });
+      m.bindPopup(`<b>${type}</b><br>${dateTime}<br>${d["地番情報"] || ''}`);
+      markers.addLayer(m);
+    }
+
+    const item = document.createElement('div');
+    item.className = 'sitem';
+    item.innerHTML = `
+      <div class="sitem-content" onclick="if(!isNaN(${lat}) && !isNaN(${lng})) map.setView([${lat},${lng}], 14)">
+        <div class="sitem-title">${d["地番情報"] || '秋田県内'}</div>
+        <div class="sitem-meta"><strong>${dateTime}</strong> | ${d["市町村"] || ''}</div>
+        <span class="type-tag tag-${type}">${type}</span>
+      </div>
+    `;
+    listEl.appendChild(item);
+  });
+
+  document.getElementById('list-count').textContent = `${count} 件の情報`;
+}
 
   document.getElementById('list-count').textContent = `該当データ: ${filtered.length}件`;
 
