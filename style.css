@@ -117,45 +117,66 @@ html, body {
 /* ==========================================
    📱 スマートフォン（モバイル）向けのスクロール修正
    ========================================== */
+/* ==========================================
+   📱 スマートフォン専用：ボタン・UIの最適化設定
+   ========================================== */
 @media (max-width: 768px) {
-  /* アプリ全体の縦スクロールを許可する */
-  html, body, #app {
-    overflow-y: auto !important;
-    height: auto !important;
+  /* 1. 地図上のコントロールパネルをスマホ用に最適化 */
+  .map-control-overlay {
+    position: absolute !important;
+    top: auto !important;
+    bottom: 10px !important; /* ボタン群を下側に配置して親指で押しやすく */
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;  /* 画面幅いっぱいに広げる */
+    padding: 8px !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+    border: 2px solid #1e293b !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr; /* ボタンを綺麗に2列に並べる */
+    gap: 6px !important;
+    z-index: 3000 !important;
   }
 
-  /* ダッシュボード全体の固定を解除 */
-  .dashboard {
-    height: auto !important;
-    overflow: visible !important;
-  }
-
-  /* メインコンテンツ（マップとサイドバー）の並びを縦にする */
-  .main-content {
-    flex-direction: column !important;
-    height: auto !important;
-    overflow: visible !important;
-  }
-
-  /* 地図の高さが潰れないように固定 */
-  .map-container {
-    height: 400px !important; /* スマホ時の地図の高さ */
-    flex: none !important;
-  }
-
-  /* ⚠️ 最重要：サイドバー（目撃リスト）を縦スクロール可能にする */
-  .sidebar {
+  /* 2. パネル内の各ボタンの調整 */
+  .map-ctrl-btn {
     width: 100% !important;
-    height: auto !important;
-    max-height: 500px; /* リスト全体の最大高さ */
-    box-shadow: none !important;
+    margin-bottom: 0 !important; /* グリッド配置なので余白をリセット */
+    padding: 12px 6px !important; /* タップしやすいように上下に少し厚みを持たせる */
+    font-size: 11px !important;   /* 文字がはみ出さない絶妙なサイズ */
+    border-radius: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    box-sizing: border-box !important;
   }
 
-  /* リストの中身をスクロールさせる */
-  #sightings-list {
-    max-height: 400px; /* ここを突き抜けたデータがスクロール可能になります */
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch; /* iPhoneでのスクロールを滑らかにする */
-    padding-bottom: 20px;
+  /* 3. 特大の「熊よけ爆竹」ボタンだけは、2列分ぶち抜きで最上部に目立たせる */
+  #btn-alarm {
+    grid-column: span 2 !important; 
+    font-size: 13px !important;
+    padding: 14px !important;
+    background: linear-gradient(135deg, #ef4444, #b91c1c) !important;
+  }
+
+  /* 4. 雨雲レーダーのシライダー（時間選択）も2列ぶち抜きで下部に配置 */
+  .slider-container {
+    grid-column: span 2 !important;
+    margin-top: 2px !important;
+    padding: 6px !important;
+  }
+
+  /* 5. リーフレット標準のズームボタン（＋ー）が被る場合は非表示か位置変更 */
+  .leaflet-top.leaflet-right {
+    top: 10px !important; /* パネルと被らないように上部に退避 */
+  }
+
+  /* 6. 期間・種別フィルターのボタンをスマホでタップしやすく */
+  .filter-box .fbtn {
+    padding: 10px 4px !important; /* タップ領域（縦幅）を広げる */
+    font-size: 11px !important;
   }
 }
