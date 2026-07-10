@@ -66,7 +66,6 @@ function loadServerData() {
       const ids = CSV_DATA.map(d => d && d["出没情報ID"] ? parseInt(d["出没情報ID"]) : 0).filter(id => !isNaN(id));
       nextId = ids.length > 0 ? Math.max(...ids) + 1 : 1;
       render();
-      updateAlertBanner();
     })
     .catch(err => {
       console.error("データ同期エラー: ", err);
@@ -74,11 +73,12 @@ function loadServerData() {
     });
 }
 
-function saveToServer(onDone) {
+// 🌱 軽量版：新規1件だけをサーバーに送信して追記保存する（全件送信はしない）
+function saveEntryToServer(entry, onDone) {
   fetch('/api/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(CSV_DATA)
+    body: JSON.stringify(entry)
   })
   .then(res => res.json())
   .then(resData => {
@@ -110,8 +110,6 @@ function loadOpenMeteoForecast() {
       document.getElementById('weather-icon').textContent = wIcon;
       document.getElementById('weather-text').textContent = `秋田市: ${wText}`;
 
-      updateAlertBanner();
-
       const timeline = document.getElementById('weather-timeline');
       let tHtml = '';
       for (let i = 0; i < 8; i++) {
@@ -127,41 +125,17 @@ function loadOpenMeteoForecast() {
 }
 
 /* ---------------------------------------------------------
-   アラートバナー
+   状況サマリー（危険度の判定・表示は行わず、件数と条件だけを
+   淡々と示すシンプルな表示にする）
    --------------------------------------------------------- */
-function updateAlertBanner() {
-  const alertBar = document.getElementById('alert-bar');
+const PERIOD_LABELS = { '1': '直近1ヶ月', '3': '直近3ヶ月', '6': '直近6ヶ月', '12': '直近1年間', 'all': '全期間' };
+const TYPE_LABELS = { 'all': 'すべての状況', '目撃': '目撃・痕跡', '人身被害': '人身被害' };
+
+function updateStatusSummary(count) {
   const titleEl = document.getElementById('alert-title');
   const descEl = document.getElementById('dynamic-alert-text');
-  const adviceEl = document.getElementById('weather-advice-text');
-
-  if (currentFilterType === '人身被害') {
-    alertBar.style.background = "linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%)";
-    titleEl.textContent = "🔴 【極めて危険】クマ人身被害発生エリア";
-    descEl.textContent = "過去、または直近で人身被害が報告された最危険区域です。命に関わる重大な事態が生じています。";
-    adviceEl.textContent = "⚠️【警戒レベル極大】該当の市町村・山林・農地への立ち入りは絶対に行わないでください。周囲での単独行動は極めて危険です。";
-  } else if (currentFilterType === '目撃') {
-    alertBar.style.background = "linear-gradient(135deg, #c2410c 0%, #ea580c 100%)";
-    titleEl.textContent = "🟡 【注意】クマの目撃・痕跡（足跡・食痕）情報あり";
-    descEl.textContent = "付近でクマ本体の目撃、あるいは新しい足跡やフンなどの痕跡が発見されています。";
-    adviceEl.textContent = "🐾【警戒レベル中】クマが近くに潜んでいる可能性があります。朝夕の行動を避け、鈴やラジオなど音の出るものを必ず携帯してください。";
-  } else {
-    const hasDanger = CSV_DATA.some(d => d && String(d["情報種別"]).includes("人身被害"));
-    if (hasDanger) {
-      alertBar.style.background = "linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%)";
-      titleEl.textContent = "🔴 🚨 クマ危険度【極めて高い・人身被害報告あり】";
-      descEl.textContent = "県内で深刻な人身被害が報告されています。マップ上の赤いピンの場所に近づかないでください。";
-    } else if (CSV_DATA.length > 0) {
-      alertBar.style.background = "linear-gradient(135deg, #c2410c 0%, #ea580c 100%)";
-      titleEl.textContent = "🟡 クマ危険度【中・リアルタイム目撃あり】";
-      descEl.textContent = "最新の目撃報告がデータベースに同期されています。周囲の安全を確認してください。";
-    } else {
-      alertBar.style.background = "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)";
-      titleEl.textContent = "🟢 クマ危険度【低】（現在新しいデータはありません）";
-      descEl.textContent = "現在のところ最新の目撃・被害報告はありません。日々の気象情報をあわせて確認しましょう。";
-    }
-    adviceEl.textContent = "周囲の状況に常に注意し、見通しの悪い茂みや林道に入る際は音を出して自分の存在を知らせてください。";
-  }
+  titleEl.textContent = "🐻 秋田県 クマ目撃情報マップ";
+  descEl.textContent = `${PERIOD_LABELS[currentPeriod] || ''}・${TYPE_LABELS[currentFilterType] || ''}を表示中｜該当 ${count} 件`;
 }
 
 /* ---------------------------------------------------------
@@ -261,6 +235,7 @@ function render() {
 
   listEl.appendChild(fragment);
   document.getElementById('list-count').textContent = `${count} 件の情報`;
+  updateStatusSummary(count);
 }
 
 function escapeHtml(str) {
@@ -482,7 +457,7 @@ function submitPost() {
   if (!dateVal) { alert('目撃日時を入力してください'); return; }
 
   const entry = {
-    "出没情報ID": String(nextId++),
+    "出没情報ID": String(nextId + 1),
     "情報種別": document.getElementById('f-type').value,
     "市町村": city,
     "地番情報": '秋田県' + city + (loc || ''),
@@ -493,19 +468,19 @@ function submitPost() {
     "y(経度)": String(pendingLng)
   };
 
-  CSV_DATA.unshift(entry);
-
   const submitBtn = document.getElementById('modal-submit-btn');
   submitBtn.disabled = true;
   submitBtn.textContent = '保存中...';
 
-  saveToServer((success, message) => {
+  // 🌱 新規1件だけをサーバーへ送信（既存データの再送信はしない軽量方式）
+  saveEntryToServer(entry, (success, message) => {
     submitBtn.disabled = false;
     submitBtn.textContent = 'サーバーに保存する';
     if (success) {
+      nextId++;
+      CSV_DATA.unshift(entry);
       closeModal();
       render();
-      updateAlertBanner();
     } else {
       alert('サーバーへの保存に失敗しました: ' + message);
     }
@@ -564,7 +539,6 @@ function initEvents() {
       else if (currentFilterType === '目撃') this.classList.add('on-orange');
       else if (currentFilterType === '人身被害') this.classList.add('on-red');
       render();
-      updateAlertBanner();
     };
   });
 

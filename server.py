@@ -17,24 +17,27 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
-    
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS bear_data (
             id SERIAL PRIMARY KEY,
-            json_records TEXT NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            json_records TEXT NOT NULL
         );
     ''')
-    
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS bear_archive (
             id SERIAL PRIMARY KEY,
             archive_name TEXT NOT NULL,
-            json_records TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            json_records TEXT NOT NULL
         );
     ''')
-    
+
+    # 🩹 以前のバージョンで作られた既存テーブルに列が無い場合でも
+    #    落ちないように、無ければ追加する（既存データはそのまま保持）
+    cur.execute("ALTER TABLE bear_data ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+    cur.execute("ALTER TABLE bear_archive ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+
     conn.commit()
     cur.close()
     conn.close()
@@ -104,39 +107,45 @@ def load_data():
         return jsonify({"error": str(e)}), 500
 
 
-# 3. 🌟 【修正版】データの保存API（エラーを起こさず確実に新規保存）
+# 3. 🌟 【軽量版】投稿保存API（新規1件だけを送信・追記するので高速＆通信量が少ない）
 @app.route('/api/save', methods=['POST'])
 def save_data():
     try:
-        new_data = request.get_json()
-        if not isinstance(new_data, list):
+        entry = request.get_json()
+        if not isinstance(entry, dict):
             return jsonify({"success": False, "message": "無効なデータ形式です"}), 400
 
         conn = get_db_connection()
         cur = conn.cursor()
-        
-        # 🚨 1万件に達していたら自動で新アーカイブを作成
-        if len(new_data) >= 10000:
+
+        # 新規1件を bear_data に追記するだけ（既存データの再送信・全消去はしない）
+        cur.execute(
+            'INSERT INTO bear_data (json_records, updated_at) VALUES (%s, %s);',
+            (json.dumps([entry], ensure_ascii=False), datetime.now())
+        )
+        conn.commit()
+
+        # 🚨 bear_data に溜まった総件数が1万件を超えたら、まとめてアーカイブへ退避
+        cur.execute('SELECT json_records FROM bear_data ORDER BY id ASC;')
+        rows = cur.fetchall()
+        all_records = []
+        for row in rows:
+            all_records.extend(json.loads(row[0]))
+
+        if len(all_records) >= 10000:
             now = datetime.now()
-            timestamp_str = now.strftime('%Y%m%d_%H%M%S')
-            archive_name = f"archive_{timestamp_str}"
-            
+            archive_name = f"archive_{now.strftime('%Y%m%d_%H%M%S')}"
             cur.execute(
                 'INSERT INTO bear_archive (archive_name, json_records, created_at) VALUES (%s, %s, %s);',
-                (archive_name, json.dumps(new_data, ensure_ascii=False), now)
+                (archive_name, json.dumps(all_records, ensure_ascii=False), now)
             )
-            new_data = [] # メインをリセット
+            cur.execute('DELETE FROM bear_data;')
+            conn.commit()
 
-        # 💥 【修正箇所】TRUNCATE をやめ、一般権限でも動く DELETE に変更
-        cur.execute('DELETE FROM bear_data;')
-        cur.execute('INSERT INTO bear_data (json_records, updated_at) VALUES (%s, %s);', 
-                    (json.dumps(new_data, ensure_ascii=False), datetime.now()))
-        
-        conn.commit()
         cur.close()
         conn.close()
-            
-        return jsonify({"success": True, "message": "投稿データをデータベースに正常に保存しました！"})
+
+        return jsonify({"success": True, "message": "投稿をデータベースに保存しました！"})
     except Exception as e:
         return jsonify({"success": False, "message": f"保存エラー: {str(e)}"}), 500
 
