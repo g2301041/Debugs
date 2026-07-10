@@ -1,182 +1,276 @@
+/* ==========================================================
+   ベアウェザー：秋田県 天気＆リアルタイム安全対策
+   -- 元のUIの配色・配置・雰囲気を維持しつつ、PC/スマホの
+      両方で読みやすく、フィルタ機能・投稿機能を追加したUI --
+   ========================================================== */
+
+:root {
+  --header-bg: #1e293b;
+  --alert-blue-1: #1e3a8a;
+  --alert-blue-2: #3b82f6;
+  --alert-orange-1: #c2410c;
+  --alert-orange-2: #ea580c;
+  --alert-red-1: #7f1d1d;
+  --alert-red-2: #dc2626;
+  --ink: #0f172a;
+  --ink-soft: #334155;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --surface: #ffffff;
+  --surface-soft: #f8fafc;
+  --bg: #f0f3f6;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+* { box-sizing: border-box; }
+
 html, body {
   height: 100%; width: 100%; margin: 0; padding: 0;
-  font-family: 'Helvetica Neue', Arial, sans-serif;
-  background: #f0f3f6; color: #333; overflow: hidden;
+  font-family: 'Helvetica Neue', 'Hiragino Sans', 'Yu Gothic', Arial, sans-serif;
+  background: var(--bg); color: #333; overflow: hidden;
+  -webkit-text-size-adjust: 100%;
 }
-#app { display: flex; flex-direction: column; height: 100vh; width: 100vw; position: relative; }
+
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; width: 100vw; position: relative; }
+
+/* ---------- ヘッダー ---------- */
 .header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 20px; background: #2c3e50; color: #fff; flex-shrink: 0; z-index: 1000;
+  padding: 12px 20px; background: var(--header-bg); color: #fff; flex-shrink: 0; z-index: 1000;
   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
-.header h1 { font-size: 18px; font-weight: bold; letter-spacing: 1px; margin: 0; }
-.header-date { font-size: 14px; color: #bdc3c7; }
+.header h1 { font-size: 16px; font-weight: bold; margin: 0; line-height: 1.3; }
+.header-date { font-size: 13px; color: #94a3b8; white-space: nowrap; padding-left: 12px; }
+
 .dashboard { display: flex; flex-direction: column; flex: 1; height: 100%; width: 100%; overflow: hidden; }
+
+/* ---------- アラートバナー ---------- */
 .weather-bear-alert {
-  background: linear-gradient(135deg, #7f8c8d 0%, #95a5a6 100%);
-  color: #fff; padding: 12px 20px; display: flex; gap: 20px; align-items: center;
-  flex-shrink: 0; box-shadow: inset 0 -2px 5px rgba(0,0,0,0.1);
+  background: linear-gradient(135deg, var(--alert-blue-1) 0%, var(--alert-blue-2) 100%);
+  color: #fff; padding: 14px 20px; display: flex; gap: 15px; align-items: center;
+  flex-shrink: 0; box-shadow: inset 0 -3px 6px rgba(0,0,0,0.15);
+  transition: background 0.3s ease;
 }
 .w-card {
-  display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.15);
-  padding: 8px 16px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.2);
+  padding: 10px 16px; border-radius: 12px; flex-shrink: 0; backdrop-filter: blur(4px);
 }
+.w-icon { font-size: 30px; line-height: 1; }
 .w-info .w-temp { font-size: 22px; font-weight: bold; }
-.w-info .w-text { font-size: 11px; opacity: 0.9; white-space: nowrap; }
-.alert-message { flex: 1; }
-.alert-message .alert-title { font-size: 15px; font-weight: bold; display: flex; align-items: center; gap: 6px; margin: 0; }
-.alert-message .alert-desc { font-size: 12px; opacity: 0.95; margin-top: 2px; }
-.content-body { display: flex; flex: 1; width: 100%; height: 100%; position: relative; overflow: hidden; }
+.w-info .w-text { font-size: 12px; opacity: 0.92; white-space: nowrap; font-weight: 500; }
+.alert-message { flex: 1; min-width: 0; }
+.alert-message .alert-title { font-size: 15px; font-weight: bold; margin: 0; }
+.alert-message .alert-desc { font-size: 12px; opacity: 0.95; margin-top: 4px; line-height: 1.45; }
+
+.content-body { display: flex; flex-direction: row; flex: 1; width: 100%; height: 100%; position: relative; overflow: hidden; }
+
+/* ---------- サイドバー ---------- */
 .sidebar {
-  width: 380px; min-width: 380px; background: #fff; border-right: 1px solid #dcdde1;
-  display: flex; flex-direction: column; height: 100%; flex-shrink: 0; z-index: 10;
+  width: 380px; min-width: 380px; background: #fff; border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; height: 100%; flex-shrink: 0; z-index: 10; position: relative;
 }
-.weather-advice { padding: 12px 15px; background: #f8f9fa; border-bottom: 1px solid #eee; font-size: 12px; line-height: 1.5; color: #475569; flex-shrink: 0; }
-.weather-advice h3 { font-size: 13px; color: #2c3e50; margin-top: 0; margin-bottom: 4px; display: flex; align-items: center; gap: 4px; }
-.weather-forecast-container { padding: 10px 15px; background: #ffffff; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
-.weather-forecast-title { font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: 6px; }
+.sidebar-scroll-wrapper { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+.sidebar-collapse-btn { display: none; }
+
+.weather-advice { padding: 12px 15px; background: var(--surface-soft); border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.55; color: var(--ink-soft); }
+.weather-advice h3 { font-size: 13px; color: var(--ink); margin: 0 0 6px; display: flex; align-items: center; gap: 6px; }
+.weather-advice p { margin: 0; }
+
+.weather-forecast-container { padding: 12px 15px; background: #ffffff; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.weather-forecast-title { font-size: 12px; font-weight: bold; color: var(--muted); margin-bottom: 8px; }
 .weather-timeline { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; }
-.weather-timeline::-webkit-scrollbar { height: 5px; }
+.weather-timeline::-webkit-scrollbar { height: 6px; }
 .weather-timeline::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
 .weather-timeline::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 .forecast-item {
   flex-shrink: 0; display: flex; flex-direction: column; align-items: center;
-  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 4px; min-width: 70px; text-align: center;
+  background: var(--surface-soft); border: 1px solid var(--line); border-radius: 8px; padding: 8px; min-width: 68px; text-align: center;
 }
-.forecast-time { font-size: 11px; color: #64748b; font-weight: bold; }
-.forecast-icon { font-size: 18px; margin: 3px 0; }
-.forecast-temp { font-size: 12px; font-weight: bold; color: #334155; }
-.weather-details-mini { margin-top: 5px; width: 100%; font-size: 10px; text-align: center; border-top: 1px dashed #e2e8f0; padding-top: 4px; display: flex; flex-direction: column; gap: 1px; }
-.w-info-mini { font-weight: 500; }
-.w-info-mini.pop { color: #2b7de9; }
-.w-info-mini.rain { color: #1a5bb4; }
-.w-info-mini.wind { color: #666666; }
-.filter-box { padding: 12px; border-bottom: 1px solid #eee; background: #fff; flex-shrink: 0; }
-#type-filters { display: flex; gap: 6px; margin-bottom: 8px; }
+.forecast-time { font-size: 11px; color: var(--muted); font-weight: bold; }
+.forecast-icon { font-size: 19px; margin: 4px 0; }
+.forecast-temp { font-size: 13px; font-weight: bold; color: var(--ink); }
+.weather-details-mini { margin-top: 6px; width: 100%; font-size: 10px; border-top: 1px dashed var(--line); padding-top: 4px; }
+.w-info-mini.pop { color: #2563eb; font-weight: 600; }
+
+/* ---------- フィルター ---------- */
+.filter-box { padding: 12px 15px; border-bottom: 1px solid var(--line); background: #fff; }
+.filter-box-period { background: var(--surface-soft); border-bottom: 1px dashed var(--line); }
+.filter-box-title { font-size: 11px; font-weight: bold; color: var(--muted); margin-bottom: 7px; letter-spacing: .02em; }
+.fbtn-row { display: flex; gap: 6px; }
 .fbtn {
-  flex: 1; padding: 6px; border: 1px solid #cbd5e1; background: #fff;
-  border-radius: 4px; font-size: 12px; cursor: pointer; text-align: center; font-weight: bold;
+  flex: 1; padding: 8px 4px; border: 1px solid #cbd5e1; background: #fff; border-radius: var(--radius-sm);
+  font-size: 12px; cursor: pointer; text-align: center; font-weight: bold; color: var(--ink-soft);
+  user-select: none; transition: background .15s ease, color .15s ease, border-color .15s ease;
+  white-space: nowrap;
 }
-.fbtn.on { background: #2c3e50; color: #fff; border-color: #2c3e50; }
-.fbtn.on-orange { background: #e67e22; color: #fff; border-color: #e67e22; }
-.fbtn.on-blue { background: #3498db; color: #fff; border-color: #3498db; }
-.select-ctrl { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 13px; outline: none; }
-.list-hdr { padding: 8px 12px; background: #f1f5f9; font-size: 12px; font-weight: bold; color: #64748b; flex-shrink: 0; }
-.list-scroll { flex: 1; overflow-y: auto; background: #fff; }
-.sitem { padding: 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: 0.2s; }
-.sitem:hover { background: #f8fafc; }
-.sitem-title { font-weight: bold; font-size: 13px; color: #2c3e50; margin-bottom: 4px; }
-.sitem-meta { font-size: 11px; color: #7f8c8d; line-height: 1.4; margin-bottom: 4px; }
-.type-tag { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: bold; }
-.tag-目撃 { background: #e2e8f0; color: #475569; }
-.tag-人身被害 { background: #fde8e8; color: #e74c3c; }
-.tag-痕跡 { background: #e0f2fe; color: #0284c7; }
-.tag-気象災害 { background: #ffeaa7; color: #d35400; }
-.action-panel { padding: 12px; background: #fff; border-top: 1px solid #eee; flex-shrink: 0; display: flex; gap: 8px; }
-.btn-primary { flex: 1; padding: 10px; background: #27ae60; color: #fff; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; text-align: center; font-size: 13px; }
+.fbtn:hover { border-color: #94a3b8; }
+.fbtn.on { background: var(--header-bg); color: #fff; border-color: var(--header-bg); }
+.fbtn.on-orange { background: var(--alert-orange-2); color: #fff; border-color: var(--alert-orange-2); }
+.fbtn.on-red { background: var(--alert-red-2); color: #fff; border-color: var(--alert-red-2); }
+
+.list-hdr { padding: 9px 15px; background: #f1f5f9; font-size: 12px; font-weight: bold; color: var(--muted); }
+.list-scroll { flex: 1; overflow-y: auto; background: #fff; -webkit-overflow-scrolling: touch; }
+
+/* ---------- リストアイテム ---------- */
+.sitem { padding: 12px 15px; border-bottom: 1px solid #f1f5f9; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+.sitem:hover, .sitem:active { background: var(--surface-soft); }
+.sitem-content { flex: 1; min-width: 0; }
+.sitem-title { font-weight: bold; font-size: 13px; color: var(--ink); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sitem-meta { font-size: 11.5px; color: var(--muted); }
+.sitem-meta strong { color: var(--ink); }
+.type-tag { display: inline-block; font-size: 10px; padding: 3px 7px; border-radius: 3px; font-weight: bold; color: #fff; margin-top: 5px; }
+.tag-目撃 { background: #eab308; color: #000; }
+.tag-痕跡 { background: #64748b; }
+.tag-人身被害 { background: #dc2626; }
+.tag-熊の人身被害 { background: #dc2626; }
+.empty-state { padding: 30px 15px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.6; }
+
+/* ---------- 投稿ボタン（アクションパネル） ---------- */
+.action-panel { padding: 12px 15px; background: #fff; border-top: 1px solid var(--line); flex-shrink: 0; }
+.btn-primary {
+  width: 100%; padding: 12px; background: #27ae60; color: #fff; border: none; border-radius: var(--radius-sm);
+  font-weight: bold; cursor: pointer; text-align: center; font-size: 14px; transition: background .15s ease;
+}
 .btn-primary:hover { background: #219653; }
-.btn-export { padding: 10px; background: #cbd5e1; color: #334155; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; text-align: center; font-size: 13px; }
+.btn-primary:active { transform: scale(0.99); }
+
+/* ---------- マップエリア ---------- */
 #map { flex: 1; height: 100%; width: 100%; background: #e5e9f0; position: relative; }
-.leaflet-control-gps { background: #fff; border: 2px solid rgba(0,0,0,0.2); border-radius: 4px; padding: 5px 10px; cursor: pointer; font-weight: bold; font-size: 12px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); }
 
-/* デバッグパネル UI */
-.debug-panel {
-  position: absolute; right: 20px; bottom: 20px; width: 340px; background: rgba(30, 41, 59, 0.95);
-  color: #0fcc83; border-radius: 8px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.4);
-  z-index: 5000; font-family: monospace; font-size: 11px; display: flex; flex-direction: column; overflow: hidden;
-  transition: height 0.3s ease; height: 32px;
+.map-control-overlay {
+  position: absolute; top: 15px; left: 15px; z-index: 2000;
+  background: rgba(255,255,255,0.96); padding: 12px; border-radius: 12px;
+  border: 3px solid var(--header-bg); box-shadow: 0 4px 15px rgba(0,0,0,0.2); width: 220px;
 }
-.debug-panel.expanded { height: 400px; }
-.debug-hdr { background: #0f172a; padding: 8px 12px; color: #f8fafc; font-weight: bold; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
-.debug-body { padding: 10px; display: flex; flex-direction: column; gap: 10px; flex: 1; overflow: hidden; }
-.debug-row { display: flex; gap: 6px; }
-.debug-btn { flex: 1; padding: 6px; background: #334155; color: #f8fafc; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-family: monospace; font-weight: bold; }
-.debug-btn.danger { background: #991b1b; color: #fecaca; }
-.debug-console { background: #020617; border: 1px solid #1e293b; padding: 6px; border-radius: 4px; height: 90px; overflow-y: auto; color: #38bdf8; white-space: pre-wrap; }
-.debug-json-view { background: #020617; border: 1px solid #1e293b; padding: 6px; border-radius: 4px; flex: 1; overflow-y: auto; color: #a7f3d0; white-space: pre; }
+.map-ctrl-btn { width: 100%; padding: 10px; margin-bottom: 6px; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; color: white; }
+.map-ctrl-btn:last-child { margin-bottom: 0; }
+#btn-radar-toggle { background: #2563eb; }
+#btn-bear-toggle { background: #1e293b; }
+#btn-gps { background: #16a34a; }
+#btn-alarm { background: linear-gradient(135deg, #ef4444, #b91c1c); box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
+#btn-alarm:active, .map-ctrl-btn:active { transform: scale(0.98); }
 
-/* モーダル */
-.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 20px; }
-.modal-overlay.open { display: flex; }
-.modal-window { background: #fff; border-radius: 8px; width: 100%; max-width: 850px; height: 90vh; max-height: 750px; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.15); overflow: hidden; }
-.modal-hdr { padding: 16px; background: #f8f9fa; border-bottom: 1px solid #eee; font-weight: bold; }
-.modal-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; gap: 20px; }
-.modal-left { flex: 1; display: flex; flex-direction: column; gap: 12px; }
-.modal-right { width: 450px; display: flex; flex-direction: column; gap: 8px; }
-.form-grp { display: flex; flex-direction: column; gap: 4px; }
-.form-grp label { font-size: 12px; font-weight: bold; color: #475569; }
-.form-grp input, .form-grp select, .form-grp textarea { padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; }
-.form-grp textarea { resize: none; height: 70px; }
-#mini-map { width: 100%; flex: 1; min-height: 380px; border: 1px solid #cbd5e1; border-radius: 4px; }
-#coord-info { font-size: 11px; background: #f1f5f9; padding: 6px; border-radius: 4px; }
-.modal-ftr { padding: 12px 16px; background: #f8f9fa; border-top: 1px solid #eee; display: flex; justify-content: end; gap: 10px; }
-.btn-sec { padding: 8px 16px; background: #e2e8f0; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-.btn-submit { padding: 8px 20px; background: #27ae60; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+.slider-container { background: var(--surface-soft); padding: 8px; border-radius: 6px; border: 1px solid var(--line); margin-top: 8px; }
+.slider-label { font-size: 12px; font-weight: bold; text-align: center; color: var(--ink); }
+.time-display { color: var(--alert-red-2); font-weight: bold; }
+.range-slider { width: 100%; cursor: pointer; margin-top: 4px; }
+
+.leaflet-control-zoom { margin-top: 15px !important; }
+
+/* 右下に浮かぶ丸い緊急ボタン */
+.floating-bell-btn {
+  position: absolute; bottom: 25px; right: 25px; z-index: 2500;
+  width: 65px; height: 65px; background: linear-gradient(135deg, #ff4b4b 0%, #c1121f 100%);
+  color: white; border: 3px solid #fff; border-radius: 50%;
+  font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35); transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.floating-bell-btn:active { transform: scale(0.92); box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+
 #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; z-index: 9999; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #555; }
 
-/* ==========================================
-   📱 スマートフォン（モバイル）向けのスクロール修正
-   ========================================== */
-/* ==========================================
-   📱 スマートフォン専用：ボタン・UIの最適化設定
-   ========================================== */
+/* ==========================================================
+   投稿モーダル
+   ========================================================== */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(15,23,42,0.55); display: none;
+  align-items: center; justify-content: center; z-index: 6000; padding: 20px;
+}
+.modal-overlay.open { display: flex; }
+.modal-window {
+  background: #fff; border-radius: var(--radius-lg); width: 100%; max-width: 880px;
+  height: 90vh; max-height: 720px; display: flex; flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.3); overflow: hidden;
+}
+.modal-hdr {
+  padding: 16px 18px; background: var(--header-bg); color: #fff; font-weight: bold; font-size: 15px;
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+}
+.modal-close { background: none; border: none; color: #fff; font-size: 16px; cursor: pointer; padding: 4px 8px; }
+.modal-body { flex: 1; overflow-y: auto; padding: 18px; display: flex; gap: 20px; }
+.modal-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.modal-right { width: 380px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+.form-grp { display: flex; flex-direction: column; gap: 5px; }
+.form-grp label { font-size: 12px; font-weight: bold; color: var(--ink-soft); }
+.form-grp input, .form-grp select, .form-grp textarea {
+  padding: 10px; border: 1px solid #cbd5e1; border-radius: var(--radius-sm); font-size: 14px; font-family: inherit;
+}
+.form-grp textarea { resize: none; height: 80px; }
+.mini-map-label { font-size: 12px; font-weight: bold; color: var(--ink-soft); }
+#mini-map { width: 100%; flex: 1; min-height: 260px; border: 1px solid #cbd5e1; border-radius: var(--radius-sm); }
+#coord-info { font-size: 11.5px; background: var(--surface-soft); padding: 8px; border-radius: 6px; color: var(--ink-soft); }
+.modal-ftr { padding: 14px 18px; background: var(--surface-soft); border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; }
+.btn-sec { padding: 10px 18px; background: #e2e8f0; border: none; border-radius: var(--radius-sm); cursor: pointer; font-weight: bold; color: var(--ink-soft); }
+.btn-submit { padding: 10px 22px; background: #27ae60; color: #fff; border: none; border-radius: var(--radius-sm); cursor: pointer; font-weight: bold; }
+.btn-submit:disabled { background: #94a3b8; cursor: not-allowed; }
+
+/* ==========================================================
+   レスポンシブ（タブレット／スマホ）
+   ========================================================== */
+@media (max-width: 1024px) {
+  .sidebar { width: 320px; min-width: 320px; }
+  .modal-right { width: 320px; }
+}
+
 @media (max-width: 768px) {
-  /* 1. 地図上のコントロールパネルをスマホ用に最適化 */
+  .header { padding: 10px 14px; }
+  .header h1 { font-size: 13.5px; }
+  .header-date { font-size: 11.5px; }
+
+  .weather-bear-alert { padding: 10px 14px; gap: 10px; }
+  .w-card { padding: 7px 11px; gap: 8px; }
+  .w-icon { font-size: 24px; }
+  .w-info .w-temp { font-size: 18px; }
+  .w-info .w-text { font-size: 10.5px; }
+  .alert-message .alert-title { font-size: 13px; }
+  .alert-message .alert-desc { font-size: 11px; }
+
+  .content-body { flex-direction: column; }
+
+  /* サイドバーは折りたたみ可能な下部シートに */
+  .sidebar {
+    width: 100%; min-width: 100%; height: 44%; border-right: none; border-top: 3px solid var(--header-bg);
+    order: 2; transition: height .25s ease;
+  }
+  .sidebar.collapsed { height: 56px; }
+  .sidebar.collapsed .sidebar-scroll-wrapper { display: none; }
+  .sidebar.collapsed .action-panel { display: none; }
+  .sidebar-collapse-btn {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%; padding: 10px; background: var(--header-bg); color: #fff; border: none;
+    font-size: 12px; font-weight: bold; cursor: pointer; flex-shrink: 0;
+  }
+
+  #map { width: 100%; flex: 1; order: 1; min-height: 0; }
+
+  .fbtn-row { flex-wrap: wrap; }
+  .fbtn { padding: 10px 6px; font-size: 12px; min-width: 30%; }
+
+  /* 地図コントロールをスマホ向けの下部グリッドに */
   .map-control-overlay {
-    position: absolute !important;
-    top: auto !important;
-    bottom: 10px !important; /* ボタン群を下側に配置して親指で押しやすく */
-    left: 10px !important;
-    right: 10px !important;
-    width: auto !important;  /* 画面幅いっぱいに広げる */
-    padding: 8px !important;
-    background: rgba(255, 255, 255, 0.95) !important;
-    border: 2px solid #1e293b !important;
-    border-radius: 12px !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
-    display: grid !important;
-    grid-template-columns: 1fr 1fr; /* ボタンを綺麗に2列に並べる */
-    gap: 6px !important;
-    z-index: 3000 !important;
+    position: absolute; top: auto; bottom: 10px; left: 10px; right: 10px; width: auto;
+    padding: 8px; border-radius: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
   }
+  .map-ctrl-btn { margin-bottom: 0; padding: 12px 6px; font-size: 11.5px; }
+  #btn-alarm { grid-column: span 2; font-size: 13px; padding: 13px; }
+  .slider-container { grid-column: span 2; margin-top: 2px; }
 
-  /* 2. パネル内の各ボタンの調整 */
-  .map-ctrl-btn {
-    width: 100% !important;
-    margin-bottom: 0 !important; /* グリッド配置なので余白をリセット */
-    padding: 12px 6px !important; /* タップしやすいように上下に少し厚みを持たせる */
-    font-size: 11px !important;   /* 文字がはみ出さない絶妙なサイズ */
-    border-radius: 8px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    text-align: center !important;
-    box-sizing: border-box !important;
-  }
+  .leaflet-top.leaflet-right { top: 8px; }
+  .leaflet-control-zoom { margin-top: 0 !important; }
 
-  /* 3. 特大の「熊よけ爆竹」ボタンだけは、2列分ぶち抜きで最上部に目立たせる */
-  #btn-alarm {
-    grid-column: span 2 !important; 
-    font-size: 13px !important;
-    padding: 14px !important;
-    background: linear-gradient(135deg, #ef4444, #b91c1c) !important;
-  }
+  .floating-bell-btn { bottom: 190px; right: 16px; width: 54px; height: 54px; font-size: 22px; }
 
-  /* 4. 雨雲レーダーのシライダー（時間選択）も2列ぶち抜きで下部に配置 */
-  .slider-container {
-    grid-column: span 2 !important;
-    margin-top: 2px !important;
-    padding: 6px !important;
-  }
+  .modal-window { height: 94vh; max-height: none; border-radius: 10px; }
+  .modal-body { flex-direction: column; padding: 14px; gap: 14px; }
+  .modal-right { width: 100%; }
+  #mini-map { min-height: 200px; }
+  .modal-ftr { flex-direction: column-reverse; }
+  .btn-sec, .btn-submit { width: 100%; }
+}
 
-  /* 5. リーフレット標準のズームボタン（＋ー）が被る場合は非表示か位置変更 */
-  .leaflet-top.leaflet-right {
-    top: 10px !important; /* パネルと被らないように上部に退避 */
-  }
-
-  /* 6. 期間・種別フィルターのボタンをスマホでタップしやすく */
-  .filter-box .fbtn {
-    padding: 10px 4px !important; /* タップ領域（縦幅）を広げる */
-    font-size: 11px !important;
-  }
+@media (max-width: 380px) {
+  .fbtn { font-size: 11px; padding: 9px 4px; }
+  .header h1 { font-size: 12px; }
 }
