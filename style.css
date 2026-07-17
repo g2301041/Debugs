@@ -49,10 +49,10 @@ html, body {
 /* ---------- アラートバナー（現在の天気＋3時間ごとの予報） ---------- */
 .weather-bear-alert {
   background: linear-gradient(135deg, var(--alert-blue-1) 0%, var(--alert-blue-2) 100%);
-  color: #fff; padding: 14px 20px; display: flex; flex-direction: column; gap: 12px;
+  color: #fff; padding: 12px 20px; display: flex; flex-direction: row; align-items: center; gap: 20px;
   flex-shrink: 0; box-shadow: inset 0 -3px 6px rgba(0,0,0,0.15);
 }
-.alert-top-row { display: flex; gap: 15px; align-items: center; }
+.alert-top-row { display: flex; gap: 15px; align-items: center; flex-shrink: 0; }
 .w-card {
   display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.2);
   padding: 10px 16px; border-radius: 12px; flex-shrink: 0; backdrop-filter: blur(4px);
@@ -60,13 +60,14 @@ html, body {
 .w-icon { font-size: 30px; line-height: 1; }
 .w-info .w-temp { font-size: 22px; font-weight: bold; }
 .w-info .w-text { font-size: 12px; opacity: 0.92; white-space: nowrap; font-weight: 500; }
-.alert-message { flex: 1; min-width: 0; }
-.alert-message .alert-title { font-size: 15px; font-weight: bold; margin: 0; }
-.alert-message .alert-desc { font-size: 12px; opacity: 0.95; margin-top: 4px; line-height: 1.45; }
+.alert-message { min-width: 0; }
+.alert-message .alert-title { font-size: 15px; font-weight: bold; margin: 0; white-space: nowrap; }
+.alert-message .alert-desc { font-size: 12px; opacity: 0.95; margin-top: 4px; line-height: 1.45; white-space: nowrap; }
 
-.forecast-row { display: flex; flex-direction: column; gap: 6px; }
-.weather-forecast-title { font-size: 11px; font-weight: bold; color: rgba(255,255,255,0.85); letter-spacing: .02em; }
-.weather-timeline { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+/* PC版：予報を天気カードの横に並べる（横並び） */
+.forecast-row { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.weather-forecast-title { font-size: 11px; font-weight: bold; color: rgba(255,255,255,0.85); letter-spacing: .02em; white-space: nowrap; flex-shrink: 0; }
+.weather-timeline { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; flex: 1; min-width: 0; }
 .weather-timeline::-webkit-scrollbar { height: 5px; }
 .weather-timeline::-webkit-scrollbar-track { background: rgba(255,255,255,0.15); border-radius: 10px; }
 .weather-timeline::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.4); border-radius: 10px; }
@@ -90,7 +91,7 @@ html, body {
   transition: width 0.25s ease, min-width 0.25s ease;
   overflow: hidden;
 }
-.sidebar-scroll-wrapper { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-width: 380px; }
+.sidebar-scroll-wrapper { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-width: 380px; min-height: 0; }
 .sidebar-collapse-btn { display: none; }
 
 /* 🡄 PC向け：サイドバーの端につくタブ型の最小化ボタン
@@ -100,7 +101,7 @@ html, body {
   position: absolute; top: 50%; left: 380px; transform: translate(-50%, -50%);
   width: 32px; height: 64px; display: flex; align-items: center; justify-content: center;
   background: var(--header-bg); color: #fff; border: none; border-radius: 0 10px 10px 0;
-  cursor: pointer; z-index: 60; box-shadow: 2px 0 8px rgba(0,0,0,0.2); font-size: 16px; font-weight: bold;
+  cursor: pointer; z-index: 2800; box-shadow: 2px 0 8px rgba(0,0,0,0.2); font-size: 16px; font-weight: bold;
   transition: left .25s ease, background .15s ease;
 }
 .sidebar-edge-toggle:hover { background: #0f172a; }
@@ -126,8 +127,8 @@ html, body {
 .fbtn.on-orange { background: var(--alert-orange-2); color: #fff; border-color: var(--alert-orange-2); }
 .fbtn.on-red { background: var(--alert-red-2); color: #fff; border-color: var(--alert-red-2); }
 
-.list-hdr { padding: 9px 15px; background: #f1f5f9; font-size: 12px; font-weight: bold; color: var(--muted); }
-.list-scroll { flex: 1; overflow-y: auto; background: #fff; -webkit-overflow-scrolling: touch; }
+.list-hdr { padding: 9px 15px; background: #f1f5f9; font-size: 12px; font-weight: bold; color: var(--muted); flex-shrink: 0; }
+.list-scroll { flex: 1; min-height: 0; overflow-y: auto; background: #fff; -webkit-overflow-scrolling: touch; }
 
 /* ---------- リストアイテム ---------- */
 .sitem { padding: 12px 15px; border-bottom: 1px solid #f1f5f9; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
@@ -155,25 +156,32 @@ html, body {
 /* ---------- マップエリア ---------- */
 #map { flex: 1; height: 100%; width: 100%; background: #e5e9f0; position: relative; }
 
-.map-control-overlay {
-  position: absolute; top: 15px; left: 15px; z-index: 2000;
-  background: rgba(255,255,255,0.96); padding: 12px; border-radius: 12px;
-  border: 3px solid var(--header-bg); box-shadow: 0 4px 15px rgba(0,0,0,0.2); width: 220px;
+/* 🗺️ 地図右上のアイコンツールバー（ズームコントロールの下に縦並び） */
+.map-toolbar {
+  position: absolute; top: 96px; right: 10px; z-index: 2000;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
 }
-.map-ctrl-btn { width: 100%; padding: 10px; margin-bottom: 6px; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; color: white; }
-.map-ctrl-btn:last-child { margin-bottom: 0; }
+.map-icon-btn {
+  width: 44px; height: 44px; border: none; border-radius: 10px; cursor: pointer;
+  font-size: 20px; color: #fff; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25); flex-shrink: 0;
+}
+.map-icon-btn:active { transform: scale(0.94); }
 #btn-radar-toggle { background: #2563eb; }
 #btn-bear-toggle { background: #1e293b; }
 #btn-gps { background: #16a34a; }
-#btn-alarm { background: linear-gradient(135deg, #ef4444, #b91c1c); box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
-#btn-alarm:active, .map-ctrl-btn:active { transform: scale(0.98); }
+.map-icon-btn.alarm { background: linear-gradient(135deg, #ef4444, #b91c1c); }
 
-.slider-container { background: var(--surface-soft); padding: 8px; border-radius: 6px; border: 1px solid var(--line); margin-top: 8px; }
-.slider-label { font-size: 12px; font-weight: bold; text-align: center; color: var(--ink); }
+.slider-container {
+  background: rgba(255,255,255,0.97); padding: 8px; border-radius: 8px; border: 1px solid var(--line);
+  width: 150px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.slider-label { font-size: 11px; font-weight: bold; text-align: center; color: var(--ink); }
 .time-display { color: var(--alert-red-2); font-weight: bold; }
 .range-slider { width: 100%; cursor: pointer; margin-top: 4px; }
 
 .leaflet-control-zoom { margin-top: 15px !important; }
+.leaflet-top.leaflet-right { z-index: 1900; }
 
 /* 右下に浮かぶ丸い緊急ボタン */
 .floating-bell-btn {
@@ -268,14 +276,10 @@ html, body {
   .fbtn-row { flex-wrap: wrap; }
   .fbtn { padding: 10px 6px; font-size: 12px; min-width: 30%; }
 
-  /* 地図コントロールをスマホ向けの下部グリッドに */
-  .map-control-overlay {
-    position: absolute; top: auto; bottom: 10px; left: 10px; right: 10px; width: auto;
-    padding: 8px; border-radius: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
-  }
-  .map-ctrl-btn { margin-bottom: 0; padding: 12px 6px; font-size: 11.5px; }
-  #btn-alarm { grid-column: span 2; font-size: 13px; padding: 13px; }
-  .slider-container { grid-column: span 2; margin-top: 2px; }
+  /* 地図アイコンツールバー（スマホでも縦並びのまま、少し小さく） */
+  .map-toolbar { top: 68px; right: 8px; gap: 6px; }
+  .map-icon-btn { width: 40px; height: 40px; font-size: 18px; }
+  .slider-container { width: 130px; }
 
   .leaflet-top.leaflet-right { top: 8px; }
   .leaflet-control-zoom { margin-top: 0 !important; }

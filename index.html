@@ -79,11 +79,11 @@
       <button class="sidebar-edge-toggle" id="sidebar-edge-toggle" title="サイドバーの最小化/展開">‹</button>
 
       <div id="map">
-        <div class="map-control-overlay" id="map-ui">
-          <button class="map-ctrl-btn" id="btn-radar-toggle">🌧️ 雨雲レーダーを表示</button>
-          <button class="map-ctrl-btn" id="btn-bear-toggle">🐻 熊マーカーを隠す</button>
-          <button class="map-ctrl-btn" id="btn-gps">📍 現在地を取得</button>
-          <button class="map-ctrl-btn" id="btn-alarm">💥 熊よけ爆竹</button>
+        <div class="map-toolbar" id="map-ui">
+          <button class="map-icon-btn" id="btn-radar-toggle" title="雨雲レーダーを表示">🌧️</button>
+          <button class="map-icon-btn" id="btn-bear-toggle" title="熊マーカーを隠す">🐻</button>
+          <button class="map-icon-btn" id="btn-gps" title="現在地を取得">📍</button>
+          <button class="map-icon-btn alarm" id="btn-alarm" title="熊よけ爆竹">💥</button>
           <div class="slider-container" id="radar-slider-box" style="display: none;">
             <div class="slider-label">時間: <span class="time-display" id="time-label">-</span></div>
             <input type="range" id="radar-time-slider" min="0" max="0" value="0" class="range-slider">
@@ -141,9 +141,9 @@
         </div>
       </div>
       <div class="modal-right">
-        <label class="mini-map-label">地図をタップして場所を指定してください</label>
+        <label class="mini-map-label">地図をタップすると、その場所の住所を自動入力します</label>
         <div id="mini-map"></div>
-        <div id="coord-info">場所が未選択です</div>
+        <div id="coord-info">場所が未選択です（GPSが使えれば現在地を自動入力します）</div>
       </div>
     </div>
     <div class="modal-ftr">

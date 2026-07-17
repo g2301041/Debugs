@@ -409,6 +409,12 @@ async function playBearAlarm(event) {
 /* ---------------------------------------------------------
    投稿モーダル（サーバーDBへの保存）
    --------------------------------------------------------- */
+const AKITA_CITIES = [
+  '秋田市','能代市','横手市','大館市','男鹿市','湯沢市','鹿角市','由利本荘市','潟上市',
+  '大仙市','北秋田市','にかほ市','仙北市','小坂町','藤里町','三種町','八峰町','五城目町',
+  '八郎潟町','井川町','大潟村','美郷町','羽後町','東成瀬村'
+];
+
 function openPostModal() {
   document.getElementById('modal-overlay').classList.add('open');
   const dateInput = document.getElementById('f-date');
@@ -417,7 +423,18 @@ function openPostModal() {
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     dateInput.value = now.toISOString().slice(0, 16);
   }
-  initMiniMap();
+
+  // 📍 GPSが有効なら、開いたタイミングで現在地を自動的にピン留め・住所入力する
+  initMiniMap(() => {
+    if (navigator.geolocation) {
+      document.getElementById('coord-info').textContent = '現在地を取得中...';
+      navigator.geolocation.getCurrentPosition(
+        pos => applyPinLocation(pos.coords.latitude, pos.coords.longitude, true),
+        () => { document.getElementById('coord-info').textContent = '場所が未選択です（地図をタップして指定してください）'; },
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+    }
+  });
 }
 
 function closeModal() {
@@ -427,24 +444,63 @@ function closeModal() {
   document.getElementById('f-note').value = '';
   if (miniMarker) { miniMarker.remove(); miniMarker = null; }
   pendingLat = null; pendingLng = null;
-  document.getElementById('coord-info').textContent = '場所が未選択です';
+  document.getElementById('coord-info').textContent = '場所が未選択です（GPSが使えれば現在地を自動入力します）';
 }
 
-function initMiniMap() {
+function initMiniMap(onReady) {
   setTimeout(() => {
     if (!miniMap) {
       miniMap = L.map('mini-map', { attributionControl: false }).setView([39.7186, 140.1023], 9);
       L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png').addTo(miniMap);
-      miniMap.on('click', e => {
-        pendingLat = e.latlng.lat; pendingLng = e.latlng.lng;
-        document.getElementById('coord-info').textContent = `緯度: ${pendingLat.toFixed(4)} / 経度: ${pendingLng.toFixed(4)}`;
-        if (miniMarker) miniMarker.remove();
-        miniMarker = L.marker([pendingLat, pendingLng]).addTo(miniMap);
-      });
+      miniMap.on('click', e => applyPinLocation(e.latlng.lat, e.latlng.lng, false));
     } else {
       miniMap.invalidateSize();
     }
+    if (typeof onReady === 'function') onReady();
   }, 150);
+}
+
+// 📌 ピン留め（GPS自動 or 地図タップ）した地点を反映し、住所を逆引きしてフォームへ自動入力する
+function applyPinLocation(lat, lng, isAuto) {
+  pendingLat = lat; pendingLng = lng;
+  if (miniMarker) miniMarker.remove();
+  miniMarker = L.marker([lat, lng]).addTo(miniMap);
+  miniMap.setView([lat, lng], Math.max(miniMap.getZoom(), 14));
+
+  const coordInfoEl = document.getElementById('coord-info');
+  coordInfoEl.textContent = `緯度: ${lat.toFixed(4)} / 経度: ${lng.toFixed(4)} ｜ 住所を検索中...`;
+
+  reverseGeocode(lat, lng).then(info => {
+    if (info) {
+      coordInfoEl.textContent = `${info.displayName || '住所を特定しました'} ｜ 緯度: ${lat.toFixed(4)} / 経度: ${lng.toFixed(4)}`;
+      document.getElementById('f-loc').value = info.detail || '';
+      if (info.city) {
+        const citySelect = document.getElementById('f-city');
+        const match = Array.from(citySelect.options).find(o => o.value === info.city);
+        if (match) citySelect.value = info.city;
+      }
+    } else {
+      coordInfoEl.textContent = `緯度: ${lat.toFixed(4)} / 経度: ${lng.toFixed(4)}（住所は自動取得できませんでした。手入力してください）`;
+    }
+  });
+}
+
+// 🌐 座標 → 住所（OpenStreetMap Nominatim の無料逆ジオコーディングAPIを利用）
+async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=ja&zoom=16`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const addr = data.address || {};
+    const cityRaw = addr.city || addr.town || addr.village || addr.county || '';
+    const matchedCity = AKITA_CITIES.find(c => cityRaw && (cityRaw === c || cityRaw.includes(c.replace(/[市町村]$/, ''))));
+    const detailParts = [addr.suburb, addr.neighbourhood, addr.hamlet, addr.road].filter(Boolean);
+    const detail = detailParts.join(' ') || (data.display_name ? data.display_name.split(',')[0] : '');
+    return { city: matchedCity || '', detail, displayName: data.display_name || '' };
+  } catch (e) {
+    console.error('逆ジオコーディング失敗:', e);
+    return null;
+  }
 }
 
 function submitPost() {
@@ -497,8 +553,8 @@ function initEvents() {
   document.getElementById('btn-radar-toggle').onclick = function () {
     isRadarActive = !isRadarActive;
     document.getElementById('radar-slider-box').style.display = isRadarActive ? 'block' : 'none';
-    if (isRadarActive) { this.style.background = '#ef4444'; this.textContent = '☀️ 雨雲を消す'; updateRadarLayer(); }
-    else { this.style.background = '#2563eb'; this.textContent = '🌧️ 雨雲レーダーを表示'; if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; } }
+    if (isRadarActive) { this.style.background = '#ef4444'; this.textContent = '☀️'; this.title = '雨雲レーダーを隠す'; updateRadarLayer(); }
+    else { this.style.background = '#2563eb'; this.textContent = '🌧️'; this.title = '雨雲レーダーを表示'; if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; } }
   };
   document.getElementById('radar-time-slider').oninput = function () {
     document.getElementById('time-label').textContent = js_labels[this.value];
@@ -506,8 +562,8 @@ function initEvents() {
   };
   document.getElementById('btn-bear-toggle').onclick = function () {
     isBearActive = !isBearActive;
-    if (isBearActive) { this.style.background = '#1e293b'; this.textContent = '🐻 熊マーカーを隠す'; map.addLayer(markers); }
-    else { this.style.background = '#64748b'; this.textContent = '🐻 熊マーカーを表示'; map.removeLayer(markers); }
+    if (isBearActive) { this.style.background = '#1e293b'; this.textContent = '🐻'; this.title = '熊マーカーを隠す'; map.addLayer(markers); }
+    else { this.style.background = '#64748b'; this.textContent = '🙈'; this.title = '熊マーカーを表示'; map.removeLayer(markers); }
   };
   document.getElementById('btn-gps').onclick = () => {
     if (navigator.geolocation) {
