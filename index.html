@@ -22,34 +22,29 @@
 
   <div class="dashboard">
     <div class="weather-bear-alert" id="alert-bar">
-      <div class="w-card">
-        <div class="w-icon" id="weather-icon">☁️</div>
-        <div class="w-info">
-          <div class="w-temp" id="weather-temp">--°C</div>
-          <div class="w-text" id="weather-text">読込中...</div>
+      <div class="alert-top-row">
+        <div class="w-card">
+          <div class="w-icon" id="weather-icon">☁️</div>
+          <div class="w-info">
+            <div class="w-temp" id="weather-temp">--°C</div>
+            <div class="w-text" id="weather-text">読込中...</div>
+          </div>
+        </div>
+        <div class="alert-message">
+          <div class="alert-title" id="alert-title">🐻 秋田県 クマ目撃情報マップ</div>
+          <div class="alert-desc" id="dynamic-alert-text">データを読み込み中です...</div>
         </div>
       </div>
-      <div class="alert-message">
-        <div class="alert-title" id="alert-title">🐻 秋田県 クマ目撃情報マップ</div>
-        <div class="alert-desc" id="dynamic-alert-text">データを読み込み中です...</div>
+      <div class="forecast-row">
+        <div class="weather-forecast-title">⏳ 3時間ごとの天気予報（直近24時間）</div>
+        <div class="weather-timeline" id="weather-timeline"></div>
       </div>
     </div>
 
     <div class="content-body">
       <div class="sidebar" id="sidebar">
         <button class="sidebar-collapse-btn" id="sidebar-toggle" title="リストの表示切替">▲</button>
-        <button class="sidebar-edge-toggle" id="sidebar-edge-toggle" title="サイドバーの最小化/展開">‹</button>
         <div class="sidebar-scroll-wrapper">
-          <div class="weather-advice">
-            <h3>💡 本日の気象連動アドバイス</h3>
-            <p id="weather-advice-text">周囲状況に注意し、見通しの悪い場所に入る際は音の出るものを携帯してください。</p>
-          </div>
-
-          <div class="weather-forecast-container">
-            <div class="weather-forecast-title">⏳ 3時間ごとの天気予報（直近24時間）</div>
-            <div class="weather-timeline" id="weather-timeline"></div>
-          </div>
-
           <!-- 📅 表示期間フィルター -->
           <div class="filter-box filter-box-period">
             <div class="filter-box-title">📅 表示期間</div>
@@ -80,6 +75,8 @@
           <button class="btn-primary" id="btn-open-post">📝 目撃情報を投稿する</button>
         </div>
       </div>
+
+      <button class="sidebar-edge-toggle" id="sidebar-edge-toggle" title="サイドバーの最小化/展開">‹</button>
 
       <div id="map">
         <div class="map-control-overlay" id="map-ui">
