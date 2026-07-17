@@ -70,9 +70,25 @@ html, body {
 .sidebar {
   width: 380px; min-width: 380px; background: #fff; border-right: 1px solid var(--line);
   display: flex; flex-direction: column; height: 100%; flex-shrink: 0; z-index: 10; position: relative;
+  transition: width 0.25s ease, min-width 0.25s ease;
+  overflow: hidden;
 }
-.sidebar-scroll-wrapper { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+.sidebar-scroll-wrapper { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-width: 380px; }
 .sidebar-collapse-btn { display: none; }
+
+/* 🡄 PC向け：サイドバーの端につくタブ型の最小化ボタン */
+.sidebar-edge-toggle {
+  position: absolute; top: 50%; right: -16px; transform: translateY(-50%);
+  width: 32px; height: 64px; display: flex; align-items: center; justify-content: center;
+  background: var(--header-bg); color: #fff; border: none; border-radius: 0 10px 10px 0;
+  cursor: pointer; z-index: 60; box-shadow: 2px 0 8px rgba(0,0,0,0.2); font-size: 16px; font-weight: bold;
+  transition: background .15s ease;
+}
+.sidebar-edge-toggle:hover { background: #0f172a; }
+
+.sidebar.mini { width: 0; min-width: 0; border-right: none; }
+.sidebar.mini .sidebar-scroll-wrapper,
+.sidebar.mini .action-panel { visibility: hidden; }
 
 .weather-advice { padding: 12px 15px; background: var(--surface-soft); border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.55; color: var(--ink-soft); }
 .weather-advice h3 { font-size: 13px; color: var(--ink); margin: 0 0 6px; display: flex; align-items: center; gap: 6px; }
@@ -234,6 +250,7 @@ html, body {
     width: 100%; min-width: 100%; height: 44%; border-right: none; border-top: 3px solid var(--header-bg);
     order: 2; transition: height .25s ease;
   }
+  .sidebar-scroll-wrapper { min-width: 100%; }
   .sidebar.collapsed { height: 56px; }
   .sidebar.collapsed .sidebar-scroll-wrapper { display: none; }
   .sidebar.collapsed .action-panel { display: none; }
@@ -242,6 +259,7 @@ html, body {
     width: 100%; padding: 10px; background: var(--header-bg); color: #fff; border: none;
     font-size: 12px; font-weight: bold; cursor: pointer; flex-shrink: 0;
   }
+  .sidebar-edge-toggle { display: none; }
 
   #map { width: 100%; flex: 1; order: 1; min-height: 0; }
 

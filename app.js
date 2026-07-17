@@ -551,12 +551,21 @@ function initEvents() {
     if (e.target.id === 'modal-overlay') closeModal();
   });
 
-  // 📱 サイドバー折りたたみ（スマホ用）
-  const sidebar = document.querySelector('.sidebar');
+  // 📱 サイドバー折りたたみ（スマホ用：下部シートの高さを縮める）
+  const sidebar = document.getElementById('sidebar');
   const toggleBtn = document.getElementById('sidebar-toggle');
   toggleBtn.onclick = () => {
     sidebar.classList.toggle('collapsed');
     toggleBtn.textContent = sidebar.classList.contains('collapsed') ? '▼ 一覧を表示' : '▲ 地図を優先表示';
+    setTimeout(() => { if (map) map.invalidateSize(); }, 260);
+  };
+
+  // 🖥️ サイドバー最小化（PC用：端のタブで幅0まで畳んで地図を全画面に）
+  const edgeToggleBtn = document.getElementById('sidebar-edge-toggle');
+  edgeToggleBtn.onclick = () => {
+    sidebar.classList.toggle('mini');
+    edgeToggleBtn.textContent = sidebar.classList.contains('mini') ? '›' : '‹';
+    edgeToggleBtn.title = sidebar.classList.contains('mini') ? 'サイドバーを展開' : 'サイドバーを最小化';
     setTimeout(() => { if (map) map.invalidateSize(); }, 260);
   };
 }
