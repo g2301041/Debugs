@@ -42,11 +42,9 @@ function initMap() {
   map.addLayer(markers);
 
   const mapUi = document.getElementById('map-ui');
-  const floatAlarm = document.getElementById('btn-floating-alarm');
 
   ['mousedown', 'touchstart', 'dblclick', 'wheel'].forEach(evt => {
     mapUi.addEventListener(evt, e => e.stopPropagation());
-    floatAlarm.addEventListener(evt, e => e.stopPropagation());
   });
 
   initEvents();
@@ -548,7 +546,6 @@ function submitPost() {
    --------------------------------------------------------- */
 function initEvents() {
   document.getElementById('btn-alarm').onclick = playBearAlarm;
-  document.getElementById('btn-floating-alarm').onclick = playBearAlarm;
 
   document.getElementById('btn-radar-toggle').onclick = function () {
     isRadarActive = !isRadarActive;

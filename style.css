@@ -183,16 +183,6 @@ html, body {
 .leaflet-control-zoom { margin-top: 15px !important; }
 .leaflet-top.leaflet-right { z-index: 1900; }
 
-/* 右下に浮かぶ丸い緊急ボタン */
-.floating-bell-btn {
-  position: absolute; bottom: 25px; right: 25px; z-index: 2500;
-  width: 65px; height: 65px; background: linear-gradient(135deg, #ff4b4b 0%, #c1121f 100%);
-  color: white; border: 3px solid #fff; border-radius: 50%;
-  font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.35); transition: transform 0.1s ease, box-shadow 0.1s ease;
-}
-.floating-bell-btn:active { transform: scale(0.92); box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
-
 #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; z-index: 9999; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #555; }
 
 /* ==========================================================
@@ -245,22 +235,29 @@ html, body {
   .header h1 { font-size: 13.5px; }
   .header-date { font-size: 11.5px; }
 
-  .weather-bear-alert { padding: 10px 14px; gap: 10px; }
+  /* バナーは縦積みにして、天気予報の行が画面幅いっぱいを使って
+     横スクロールできるようにする（1行のままだと幅を奪い合って
+     予報が見えなくなる／スクロールできなくなるため） */
+  .weather-bear-alert { flex-direction: column; align-items: stretch; padding: 10px 14px; gap: 8px; overflow: hidden; }
+  .alert-top-row { width: 100%; padding: 0; gap: 10px; }
   .w-card { padding: 7px 11px; gap: 8px; }
   .w-icon { font-size: 24px; }
   .w-info .w-temp { font-size: 18px; }
   .w-info .w-text { font-size: 10.5px; }
-  .alert-message .alert-title { font-size: 13px; }
-  .alert-message .alert-desc { font-size: 11px; }
+  .alert-message { flex: 1; min-width: 0; overflow: hidden; }
+  .alert-message .alert-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .alert-message .alert-desc { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .forecast-row { width: 100%; }
 
   .content-body { flex-direction: column; }
 
   /* サイドバーは折りたたみ可能な下部シートに */
   .sidebar {
-    width: 100%; min-width: 100%; height: 44%; border-right: none; border-top: 3px solid var(--header-bg);
+    width: 100%; min-width: 100%; height: 58%; border-right: none; border-top: 3px solid var(--header-bg);
     order: 2; transition: height .25s ease;
   }
-  .sidebar-scroll-wrapper { min-width: 100%; }
+  .sidebar-scroll-wrapper { min-width: 100%; overflow-y: auto; }
+  .list-scroll { flex: 1 1 110px; min-height: 110px; }
   .sidebar.collapsed { height: 56px; }
   .sidebar.collapsed .sidebar-scroll-wrapper { display: none; }
   .sidebar.collapsed .action-panel { display: none; }
@@ -273,18 +270,20 @@ html, body {
 
   #map { width: 100%; flex: 1; order: 1; min-height: 0; }
 
-  .fbtn-row { flex-wrap: wrap; }
-  .fbtn { padding: 10px 6px; font-size: 12px; min-width: 30%; }
+  /* フィルターボタンは折り返さず1行に収める
+     （折り返すと縦に場所を取りすぎて、下のリストが表示できなくなるため） */
+  .filter-box { padding: 6px 12px; }
+  .filter-box-title { margin-bottom: 4px; }
+  .fbtn-row { flex-wrap: nowrap; gap: 4px; }
+  .fbtn { padding: 6px 2px; font-size: 10.5px; white-space: nowrap; }
 
-  /* 地図アイコンツールバー（スマホでも縦並びのまま、少し小さく） */
-  .map-toolbar { top: 68px; right: 8px; gap: 6px; }
+  /* 地図アイコンツールバー（少し下げて、少し小さく） */
+  .map-toolbar { top: 88px; right: 8px; gap: 6px; }
   .map-icon-btn { width: 40px; height: 40px; font-size: 18px; }
   .slider-container { width: 130px; }
 
   .leaflet-top.leaflet-right { top: 8px; }
   .leaflet-control-zoom { margin-top: 0 !important; }
-
-  .floating-bell-btn { bottom: 190px; right: 16px; width: 54px; height: 54px; font-size: 22px; }
 
   .modal-window { height: 94vh; max-height: none; border-radius: 10px; }
   .modal-body { flex-direction: column; padding: 14px; gap: 14px; }
