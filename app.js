@@ -397,7 +397,11 @@ function updateRadarLayer(useFade = false) {
     return;
   }
   const url = js_urls[slider.value];
-  const newLayer = L.tileLayer(url, { opacity: useFade ? 0 : RADAR_OPACITY, zIndex: 1500, maxNativeZoom: 10 }).addTo(map);
+  const newLayer = L.tileLayer(url, {
+    opacity: useFade ? 0 : RADAR_OPACITY, zIndex: 1500,
+    minNativeZoom: 4, maxNativeZoom: 10, // 気象庁タイルの実データ範囲。これより外側の拡大率は自動で拡大/縮小して表示する
+    errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBTAA7' // タイル欠損時は透明画像で埋め、地図が壊れて見えないようにする
+  }).addTo(map);
 
   if (useFade && radarLayer) {
     const oldLayer = radarLayer;
