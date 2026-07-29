@@ -5,6 +5,10 @@
 
 let CSV_DATA = [];
 let map = null, markers = null, radarLayer = null, userMarker = null;
+let radarPlaying = false, radarPlayTimer = null;
+const RADAR_PLAY_INTERVAL_MS = 900;
+const RADAR_FADE_MS = 400;
+const RADAR_OPACITY = 0.65;
 let miniMap = null, miniMarker = null;
 let pendingLat = null, pendingLng = null;
 let nextId = 1;
@@ -14,6 +18,9 @@ let currentPeriod = '1';         // 1 | 3 | 6 | 12 | all （月数）
 
 let js_urls = [];
 let js_labels = [];
+let js_urls_fine = [], js_labels_fine = [];
+let js_urls_coarse = [], js_labels_coarse = [];
+let radarResMode = 'fine'; // 'fine' (〜6時間先・1kmメッシュ) | 'coarse' (7〜15時間先・5kmメッシュ)
 let isRadarActive = false;
 let isBearActive = true;
 
@@ -252,10 +259,9 @@ async function fetchJmaRadarTimestamps() {
       { prod: "nowc", url: `https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json?_=${ts}` },
       { prod: "nowc", url: `https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N2.json?_=${ts}` },
       { prod: "nowc", url: `https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N3.json?_=${ts}` },
-      { prod: "prca", url: `https://www.jma.go.jp/bosai/jmatile/data/prca/targetTimes_N1.json?_=${ts}` },
-      { prod: "prca", url: `https://www.jma.go.jp/bosai/jmatile/data/prca/targetTimes_N2.json?_=${ts}` },
-      { prod: "prca", url: `https://www.jma.go.jp/bosai/jmatile/data/prca/targetTimes_N3.json?_=${ts}` },
-      { prod: "prca", url: `https://www.jma.go.jp/bosai/jmatile/data/prca/targetTimes.json?_=${ts}` }
+      // 🌧️ 「今後の雨（降水短時間予報・降水15時間予報）」で使われている本来の予報プロダクト。
+      //    6時間先までは10分毎・1kmメッシュ、7〜15時間先は1時間毎・5kmメッシュで配信される。
+      { prod: "rasrf", url: `https://www.jma.go.jp/bosai/jmatile/data/rasrf/targetTimes.json?_=${ts}` }
     ];
 
     const responses = await Promise.all(targetApis.map(t => fetch(t.url).catch(() => null)));
@@ -272,7 +278,7 @@ async function fetchJmaRadarTimestamps() {
         if (t.basetime && t.validtime) {
           if (!allTimes[t.validtime] || t.basetime > allTimes[t.validtime].basetime) {
             t.prod = prod;
-            t.element = t.elements ? t.elements[0] : (prod === "nowc" ? "hrpns" : "prca");
+            t.element = t.elements ? t.elements[0] : (prod === "nowc" ? "hrpns" : "rasrf");
             allTimes[t.validtime] = t;
           }
         }
@@ -281,8 +287,8 @@ async function fetchJmaRadarTimestamps() {
 
     const sortedTimes = Object.values(allTimes).sort((a, b) => a.validtime.localeCompare(b.validtime));
 
-    js_urls = [];
-    js_labels = [];
+    js_urls_fine = []; js_labels_fine = [];
+    js_urls_coarse = []; js_labels_coarse = [];
     const now = new Date();
 
     sortedTimes.forEach((t) => {
@@ -296,59 +302,155 @@ async function fetchJmaRadarTimestamps() {
       const validDateJst = new Date(validDateUtc.getTime());
 
       const diffMins = Math.round((validDateJst - now) / 60000);
-      if (diffMins < -15) return;
+      // 過去は直近15分まで、未来は最長15時間先まで表示する
+      if (diffMins < -15 || diffMins > 15 * 60) return;
 
       const timeStr = `${String(validDateJst.getHours()).padStart(2, '0')}:${String(validDateJst.getMinutes()).padStart(2, '0')}`;
+      const url = `https://www.jma.go.jp/bosai/jmatile/data/${t.prod}/${t.basetime}/none/${t.validtime}/surf/${t.element}/{z}/{x}/{y}.png`;
 
-      js_urls.push(`https://www.jma.go.jp/bosai/jmatile/data/${t.prod}/${t.basetime}/none/${t.validtime}/surf/${t.element}/{z}/{x}/{y}.png`);
-
+      let label;
       if (diffMins <= 5 && diffMins >= -15) {
-        js_labels.push(`現在 (${timeStr})`);
+        label = `現在 (${timeStr})`;
       } else if (diffMins > 5 && diffMins < 60) {
-        js_labels.push(`${diffMins}分後 (${timeStr})`);
+        label = `${diffMins}分後 (${timeStr})`;
       } else {
         const hDiff = Math.floor(diffMins / 60);
         const mDiff = diffMins % 60;
-        js_labels.push(mDiff === 0 ? `${hDiff}時間後 (${timeStr})` : `${hDiff}時間${mDiff}分後 (${timeStr})`);
+        label = mDiff === 0 ? `${hDiff}時間後 (${timeStr})` : `${hDiff}時間${mDiff}分後 (${timeStr})`;
+      }
+
+      // 🔍細かい: 直近〜6時間先（1kmメッシュ）／ 🔭粗め: 7〜15時間先（5kmメッシュ）
+      if (diffMins <= 360) {
+        js_urls_fine.push(url);
+        js_labels_fine.push(label);
+      } else {
+        js_urls_coarse.push(url);
+        js_labels_coarse.push(label);
       }
     });
 
-    const slider = document.getElementById('radar-time-slider');
-    if (slider && js_urls.length > 0) {
-      slider.max = js_urls.length - 1;
-      slider.value = 0;
-      document.getElementById('time-label').textContent = js_labels[0];
-      if (isRadarActive) updateRadarLayer();
-    }
+    applyRadarResMode(radarResMode);
   } catch (e) {
     console.error("雨雲データの取得に失敗しました。", e);
     fallbackRadar();
   }
 }
 
+// 🔍/🔭 現在選択中の解像度モードに応じて、スライダーに表示するデータを切り替える
+function applyRadarResMode(mode) {
+  stopRadarPlay();
+  radarResMode = mode;
+  js_urls = mode === 'coarse' ? js_urls_coarse : js_urls_fine;
+  js_labels = mode === 'coarse' ? js_labels_coarse : js_labels_fine;
+
+  const fineBtn = document.getElementById('btn-res-fine');
+  const coarseBtn = document.getElementById('btn-res-coarse');
+  if (fineBtn && coarseBtn) {
+    fineBtn.classList.toggle('on', mode === 'fine');
+    coarseBtn.classList.toggle('on', mode === 'coarse');
+  }
+
+  const slider = document.getElementById('radar-time-slider');
+  const timeLabel = document.getElementById('time-label');
+  const playBtn = document.getElementById('btn-radar-play');
+  if (slider) {
+    if (js_urls.length > 0) {
+      slider.max = js_urls.length - 1;
+      slider.value = 0;
+      slider.disabled = false;
+      if (playBtn) playBtn.disabled = false;
+      if (timeLabel) timeLabel.textContent = js_labels[0];
+    } else {
+      slider.max = 0;
+      slider.value = 0;
+      slider.disabled = true;
+      if (playBtn) playBtn.disabled = true;
+      if (timeLabel) timeLabel.textContent = 'データなし';
+    }
+  }
+  if (isRadarActive) updateRadarLayer();
+}
+
 function fallbackRadar() {
   const currentTs = Date.now();
   const baseUtc = new Date(Math.floor(currentTs / 300000) * 300000 - 9 * 3600000);
-  js_urls = []; js_labels = [];
+  js_urls_fine = []; js_labels_fine = [];
+  js_urls_coarse = []; js_labels_coarse = [];
   for (let i = -2; i <= 6; i++) {
     const targetDt = new Date(baseUtc.getTime() + i * 5 * 60000);
     const y = targetDt.getUTCFullYear(), m = String(targetDt.getUTCMonth() + 1).padStart(2, '0'), d = String(targetDt.getUTCDate()).padStart(2, '0'), h = String(targetDt.getUTCHours()).padStart(2, '0'), min = String(targetDt.getUTCMinutes()).padStart(2, '0');
     const basetime = `${y}${m}${d}${h}${min}00`;
-    js_urls.push(`https://www.jma.go.jp/bosai/jmatile/data/nowc/${basetime}/none/${basetime}/surf/hrpns/{z}/{x}/{y}.png`);
+    js_urls_fine.push(`https://www.jma.go.jp/bosai/jmatile/data/nowc/${basetime}/none/${basetime}/surf/hrpns/{z}/{x}/{y}.png`);
     const localTime = new Date(targetDt.getTime() + 9 * 3600000);
     const timeStr = `${String(localTime.getHours()).padStart(2, '0')}:${String(localTime.getMinutes()).padStart(2, '0')}`;
-    if (i === 0) js_labels.push(`現在 (${timeStr})`); else if (i < 0) js_labels.push(`${Math.abs(i) * 5}分前 (${timeStr})`); else js_labels.push(`${i * 5}分後 (${timeStr})`);
+    if (i === 0) js_labels_fine.push(`現在 (${timeStr})`); else if (i < 0) js_labels_fine.push(`${Math.abs(i) * 5}分前 (${timeStr})`); else js_labels_fine.push(`${i * 5}分後 (${timeStr})`);
   }
+  applyRadarResMode('fine');
   const slider = document.getElementById('radar-time-slider');
-  slider.max = js_urls.length - 1; slider.value = 2;
-  document.getElementById('time-label').textContent = js_labels[2];
-  if (isRadarActive) updateRadarLayer();
+  if (slider && js_urls.length > 2) slider.value = 2;
 }
 
-function updateRadarLayer() {
+function updateRadarLayer(useFade = false) {
   const slider = document.getElementById('radar-time-slider');
-  if (radarLayer) map.removeLayer(radarLayer);
-  radarLayer = L.tileLayer(js_urls[slider.value], { opacity: 0.65, zIndex: 1500, maxNativeZoom: 10 }).addTo(map);
+  if (!js_urls.length) {
+    if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; }
+    return;
+  }
+  const url = js_urls[slider.value];
+  const newLayer = L.tileLayer(url, { opacity: useFade ? 0 : RADAR_OPACITY, zIndex: 1500, maxNativeZoom: 10 }).addTo(map);
+
+  if (useFade && radarLayer) {
+    const oldLayer = radarLayer;
+    radarLayer = newLayer;
+    radarCrossfade(oldLayer, newLayer);
+  } else {
+    if (radarLayer) map.removeLayer(radarLayer);
+    radarLayer = newLayer;
+  }
+}
+
+// 🎞️ 軽量なクロスフェード：前後のタイルを重ねて不透明度だけを滑らかに入れ替える
+function radarCrossfade(oldLayer, newLayer) {
+  const start = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - start) / RADAR_FADE_MS);
+    oldLayer.setOpacity(RADAR_OPACITY * (1 - t));
+    newLayer.setOpacity(RADAR_OPACITY * t);
+    if (t < 1) {
+      requestAnimationFrame(step);
+    } else {
+      map.removeLayer(oldLayer);
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+// ▶️/⏸ 雨雲レーダーの自動再生（末尾まで来たら先頭にループ）
+function toggleRadarPlay() {
+  if (radarPlaying) stopRadarPlay(); else startRadarPlay();
+}
+
+function startRadarPlay() {
+  if (!js_urls.length) return;
+  radarPlaying = true;
+  const btn = document.getElementById('btn-radar-play');
+  if (btn) { btn.textContent = '⏸'; btn.title = '停止'; btn.classList.add('playing'); }
+
+  radarPlayTimer = setInterval(() => {
+    const slider = document.getElementById('radar-time-slider');
+    let next = parseInt(slider.value, 10) + 1;
+    if (next > parseInt(slider.max, 10)) next = 0;
+    slider.value = next;
+    document.getElementById('time-label').textContent = js_labels[next];
+    updateRadarLayer(true);
+  }, RADAR_PLAY_INTERVAL_MS);
+}
+
+function stopRadarPlay() {
+  radarPlaying = false;
+  if (radarPlayTimer) { clearInterval(radarPlayTimer); radarPlayTimer = null; }
+  const btn = document.getElementById('btn-radar-play');
+  if (btn) { btn.textContent = '▶️'; btn.title = '自動再生'; btn.classList.remove('playing'); }
 }
 
 /* ---------------------------------------------------------
@@ -551,12 +653,16 @@ function initEvents() {
     isRadarActive = !isRadarActive;
     document.getElementById('radar-slider-box').style.display = isRadarActive ? 'block' : 'none';
     if (isRadarActive) { this.style.background = '#ef4444'; this.textContent = '☀️'; this.title = '雨雲レーダーを隠す'; updateRadarLayer(); }
-    else { this.style.background = '#2563eb'; this.textContent = '🌧️'; this.title = '雨雲レーダーを表示'; if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; } }
+    else { this.style.background = '#2563eb'; this.textContent = '🌧️'; this.title = '雨雲レーダーを表示'; stopRadarPlay(); if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; } }
   };
   document.getElementById('radar-time-slider').oninput = function () {
+    stopRadarPlay();
     document.getElementById('time-label').textContent = js_labels[this.value];
     if (isRadarActive) updateRadarLayer();
   };
+  document.getElementById('btn-radar-play').onclick = toggleRadarPlay;
+  document.getElementById('btn-res-fine').onclick = () => applyRadarResMode('fine');
+  document.getElementById('btn-res-coarse').onclick = () => applyRadarResMode('coarse');
   document.getElementById('btn-bear-toggle').onclick = function () {
     isBearActive = !isBearActive;
     if (isBearActive) { this.style.background = '#1e293b'; this.textContent = '🐻'; this.title = '熊マーカーを隠す'; map.addLayer(markers); }

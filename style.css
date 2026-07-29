@@ -174,9 +174,23 @@ html, body {
 
 .slider-container {
   background: rgba(255,255,255,0.97); padding: 8px; border-radius: 8px; border: 1px solid var(--line);
-  width: 150px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  width: 175px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
-.slider-label { font-size: 11px; font-weight: bold; text-align: center; color: var(--ink); }
+.res-toggle-row { display: flex; gap: 4px; margin-bottom: 6px; }
+.res-btn {
+  flex: 1; padding: 5px 2px; border: 1px solid #cbd5e1; background: #fff; border-radius: 5px;
+  font-size: 10.5px; font-weight: bold; cursor: pointer; color: var(--ink-soft); white-space: nowrap;
+}
+.res-btn.on { background: var(--header-bg); color: #fff; border-color: var(--header-bg); }
+.slider-label-row { display: flex; align-items: center; gap: 6px; }
+.play-btn {
+  flex-shrink: 0; width: 24px; height: 24px; border: none; border-radius: 50%; cursor: pointer;
+  background: var(--header-bg); color: #fff; font-size: 10px; display: flex; align-items: center; justify-content: center;
+  padding: 0;
+}
+.play-btn.playing { background: var(--alert-red-2); }
+.play-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+.slider-label { font-size: 11px; font-weight: bold; text-align: center; color: var(--ink); flex: 1; }
 .time-display { color: var(--alert-red-2); font-weight: bold; }
 .range-slider { width: 100%; cursor: pointer; margin-top: 4px; }
 
@@ -280,7 +294,7 @@ html, body {
   /* 地図アイコンツールバー（少し下げて、少し小さく） */
   .map-toolbar { top: 88px; right: 8px; gap: 6px; }
   .map-icon-btn { width: 40px; height: 40px; font-size: 18px; }
-  .slider-container { width: 130px; }
+  .slider-container { width: 150px; }
 
   .leaflet-top.leaflet-right { top: 8px; }
   .leaflet-control-zoom { margin-top: 0 !important; }

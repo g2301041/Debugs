@@ -83,9 +83,16 @@
           <button class="map-icon-btn" id="btn-radar-toggle" title="雨雲レーダーを表示">🌧️</button>
           <button class="map-icon-btn" id="btn-bear-toggle" title="熊マーカーを隠す">🐻</button>
           <button class="map-icon-btn" id="btn-gps" title="現在地を取得">📍</button>
-          <button class="map-icon-btn alarm" id="btn-alarm" title="熊よけアラート">🐻🔔</button>
+          <button class="map-icon-btn alarm" id="btn-alarm" title="熊よけ爆竹">💥</button>
           <div class="slider-container" id="radar-slider-box" style="display: none;">
-            <div class="slider-label">時間: <span class="time-display" id="time-label">-</span></div>
+            <div class="res-toggle-row" id="radar-res-toggle">
+              <button class="res-btn on" id="btn-res-fine" data-res="fine" title="直近〜6時間先（1kmメッシュ・高精細）">🔍 細かい</button>
+              <button class="res-btn" id="btn-res-coarse" data-res="coarse" title="7〜15時間先（5kmメッシュ・粗め）">🔭 粗め</button>
+            </div>
+            <div class="slider-label-row">
+              <button class="play-btn" id="btn-radar-play" title="自動再生">▶️</button>
+              <div class="slider-label">時間: <span class="time-display" id="time-label">-</span></div>
+            </div>
             <input type="range" id="radar-time-slider" min="0" max="0" value="0" class="range-slider">
           </div>
         </div>
