@@ -149,6 +149,14 @@ def save_data():
         cur.close()
         conn.close()
 
+#編集ともき
+        # 🔔 新規投稿の5km判定 & LINE通知を実行
+        try:
+            check_and_send_line_notification(entry)
+        except Exception as notify_err:
+            print(f"⚠️ LINE通知処理エラー: {notify_err}")
+#編集ともき
+        
         return jsonify({"success": True, "message": "投稿をデータベースに保存しました！"})
     except Exception as e:
         return jsonify({"success": False, "message": f"保存エラー: {str(e)}"}), 500
