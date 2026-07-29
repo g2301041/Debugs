@@ -4,6 +4,10 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_from_directory
 import psycopg2
 from psycopg2.extras import RealDictCursor
+#編集ともき
+# 既存の import の下に追記
+from line_notifier import check_and_send_line_notification
+#編集ともき
 
 app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
