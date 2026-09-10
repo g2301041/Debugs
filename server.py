@@ -7,7 +7,7 @@ from psycopg2.extras import RealDictCursor
 #編集ともき
 # 既存の import の下に追記
 import secrets
-from web_push import install_push, database, enqueue, digest, coordinates
+from web_push import install_push, database, enqueue, digest, coordinates, dispatch_pending
 #編集ともき
 
 app = Flask(__name__)
@@ -153,12 +153,16 @@ def save_data():
         content = {k: v for k, v in entry.items() if k != '出没情報ID'}
         event_key = 'site:' + digest(json.dumps(content, sort_keys=True, ensure_ascii=False))
         created = persist_entry(entry, event_key)
-        return jsonify(success=True, message='保存しました' if created else 'すでに登録済みです')
     except (ValueError, TypeError, KeyError):
         return jsonify(success=False, message='投稿の緯度・経度を確認してください'), 400
     except Exception:
         app.logger.exception('熊情報の保存に失敗しました')
         return jsonify(success=False, message='保存に失敗しました'), 500
+
+    # persist_entryのDBトランザクションが完了した後に送信する。
+    delivery = dispatch_pending(event_key=event_key)
+    return jsonify(success=True, message='保存しました' if created else 'すでに登録済みです',
+                   notification=delivery)
 
 
 def require_import_key():
