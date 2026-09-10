@@ -4,9 +4,10 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT
+    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --timeout 120
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: DATABASE_URL
         sync: false   # ← RenderのダッシュボードでSupabaseの接続文字列を手動設定する
+      # VAPID鍵は未設定ならDBに自動作成。既存のVAPID設定がある場合は維持する。
