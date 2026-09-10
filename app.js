@@ -763,4 +763,3 @@ function initEvents() {
     setTimeout(() => { if (map) map.invalidateSize(); }, 260);
   };
 }
-```
