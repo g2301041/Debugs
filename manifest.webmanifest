@@ -1,0 +1,11 @@
+{
+  "id": "/",
+  "name": "ベアウェザー",
+  "short_name": "ベアウェザー",
+  "lang": "ja",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb"
+}
