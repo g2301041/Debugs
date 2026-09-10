@@ -152,7 +152,11 @@ def save_data():
 #編集ともき
         # 🔔 新規投稿の5km判定 & LINE通知を実行
         try:
-            check_and_send_line_notification(entry)
+            check_and_send_line_notification(
+                 entry,
+    user_lat=利用者の保存済み緯度,
+    user_lng=利用者の保存済み経度
+            )
         except Exception as notify_err:
             print(f"⚠️ LINE通知処理エラー: {notify_err}")
 #編集ともき
