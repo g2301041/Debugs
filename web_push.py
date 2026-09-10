@@ -137,9 +137,12 @@ def install_push(app):
     @app.get('/api/push/config')
     def config():
         key = os.environ.get('VAPID_PUBLIC_KEY', '')
-        ready = bool(key and os.environ.get('VAPID_PRIVATE_KEY')
-                     and os.environ.get('VAPID_SUBJECT'))
-        return jsonify(publicKey=key, ready=ready)
+        missing = [name for name in ('VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT')
+                   if not os.environ.get(name)]
+        response = jsonify(publicKey=key, ready=not missing, missing=missing,
+                           version='20260910-fix1')
+        response.headers['Cache-Control'] = 'no-store'
+        return response
 
     @app.route('/api/push/device', methods=['POST', 'DELETE'])
     def device():
