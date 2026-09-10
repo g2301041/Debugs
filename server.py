@@ -1,15 +1,17 @@
 import os
 import json
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, abort
 import psycopg2
 from psycopg2.extras import RealDictCursor
 #編集ともき
 # 既存の import の下に追記
-from line_notifier import check_and_send_line_notification
+import secrets
+from web_push import install_push, database, enqueue, digest, coordinates
 #編集ともき
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 128 * 1024
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -48,6 +50,7 @@ def init_db():
     print("[INIT] データベースのテーブル確認が完了しました。")
 
 init_db()
+install_push(app)
 
 @app.route('/')
 def index():
@@ -57,7 +60,12 @@ def index():
 def send_static(path):
     if path == 'data.json':
         return load_data()
-    return send_from_directory(BASE_DIR, path)
+    if path not in {'app.js', 'style.css', 'debug.js', 'push.js', 'sw.js', 'manifest.webmanifest'}:
+        abort(404)
+    response = send_from_directory(BASE_DIR, path)
+    if path == 'sw.js':
+        response.headers['Cache-Control'] = 'no-cache'
+    return response
 
 
 # 2. データの読み込みAPI（過去5年分の目撃日時を正確に判定して合体）
@@ -111,60 +119,59 @@ def load_data():
         return jsonify({"error": str(e)}), 500
 
 
-# 3. 🌟 【軽量版】投稿保存API（新規1件だけを送信・追記するので高速＆通信量が少ない）
-@app.route('/api/save', methods=['POST'])
-def save_data():
-    try:
-        entry = request.get_json()
-        if not isinstance(entry, dict):
-            return jsonify({"success": False, "message": "無効なデータ形式です"}), 400
-
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        # 新規1件を bear_data に追記するだけ（既存データの再送信・全消去はしない）
-        cur.execute(
-            'INSERT INTO bear_data (json_records, updated_at) VALUES (%s, %s);',
-            (json.dumps([entry], ensure_ascii=False), datetime.now())
-        )
-        conn.commit()
-
-        # 🚨 bear_data に溜まった総件数が1万件を超えたら、まとめてアーカイブへ退避
-        cur.execute('SELECT json_records FROM bear_data ORDER BY id ASC;')
-        rows = cur.fetchall()
+# 熊情報と通知待ちデータを、同じトランザクションで保存する。
+def persist_entry(entry, event_key):
+    coordinates({'lat': entry.get('x(緯度)', entry.get('lat')),
+                 'lng': entry.get('y(経度)', entry.get('lng'))})
+    with database() as cur:
+        # 同時投稿・アーカイブ移動が重ならないようにする。
+        cur.execute('SELECT pg_advisory_xact_lock(73420519)')
+        if not enqueue(cur, entry, event_key):
+            return False
+        cur.execute('INSERT INTO bear_data(json_records,updated_at) VALUES (%s,%s)',
+                    (json.dumps([entry], ensure_ascii=False), datetime.now()))
+        cur.execute('SELECT json_records FROM bear_data ORDER BY id ASC')
         all_records = []
-        for row in rows:
+        for row in cur.fetchall():
             all_records.extend(json.loads(row[0]))
-
         if len(all_records) >= 10000:
             now = datetime.now()
-            archive_name = f"archive_{now.strftime('%Y%m%d_%H%M%S')}"
-            cur.execute(
-                'INSERT INTO bear_archive (archive_name, json_records, created_at) VALUES (%s, %s, %s);',
-                (archive_name, json.dumps(all_records, ensure_ascii=False), now)
-            )
-            cur.execute('DELETE FROM bear_data;')
-            conn.commit()
+            cur.execute('INSERT INTO bear_archive(archive_name,json_records,created_at) VALUES (%s,%s,%s)',
+                        ('archive_' + now.strftime('%Y%m%d_%H%M%S'),
+                         json.dumps(all_records, ensure_ascii=False), now))
+            cur.execute('DELETE FROM bear_data')
+    return True
 
-        cur.close()
-        conn.close()
 
-#編集ともき
-        # 🔔 新規投稿の5km判定 & LINE通知を実行
-        try:
-            check_and_send_line_notification(entry)
-        except Exception as notify_err:
-            print(f"⚠️ LINE通知処理エラー: {notify_err}")
-#編集ともき
-        
-        return jsonify({"success": True, "message": "投稿をデータベースに保存しました！"})
-    except Exception as e:
-        return jsonify({"success": False, "message": f"保存エラー: {str(e)}"}), 500
+@app.route('/api/save', methods=['POST'])
+def save_data():
+    entry = request.get_json(silent=True)
+    if not isinstance(entry, dict):
+        return jsonify(success=False, message='無効なデータ形式です'), 400
+    try:
+        # ブラウザーの連番IDはユーザー間で重なるので、内容で重複判定する。
+        content = {k: v for k, v in entry.items() if k != '出没情報ID'}
+        event_key = 'site:' + digest(json.dumps(content, sort_keys=True, ensure_ascii=False))
+        created = persist_entry(entry, event_key)
+        return jsonify(success=True, message='保存しました' if created else 'すでに登録済みです')
+    except (ValueError, TypeError, KeyError):
+        return jsonify(success=False, message='投稿の緯度・経度を確認してください'), 400
+    except Exception:
+        app.logger.exception('熊情報の保存に失敗しました')
+        return jsonify(success=False, message='保存に失敗しました'), 500
+
+
+def require_import_key():
+    expected = os.environ.get('IMPORT_API_KEY', '')
+    actual = request.headers.get('X-Import-Key', '')
+    if not expected or not secrets.compare_digest(actual, expected):
+        abort(403)
 
 
 # 4. 【最新版】分割インポート用コマンド
 @app.route('/api/force-import', methods=['GET'])
 def force_import():
+    require_import_key()
     try:
         page = int(request.args.get('page', 1))
         chunk_size = 3000
@@ -188,6 +195,7 @@ def force_import():
         conn = get_db_connection()
         cur = conn.cursor()
         
+        cur.execute('SELECT pg_advisory_xact_lock(73420519)')
         # 最初だけ完全リセット
         if page == 1:
             cur.execute('TRUNCATE TABLE bear_data CASCADE;')
@@ -215,4 +223,5 @@ def force_import():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(port=5000)
+```
