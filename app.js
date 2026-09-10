@@ -533,7 +533,10 @@ function openPostModal() {
     if (navigator.geolocation) {
       document.getElementById('coord-info').textContent = '現在地を取得中...';
       navigator.geolocation.getCurrentPosition(
-        pos => applyPinLocation(pos.coords.latitude, pos.coords.longitude, true),
+        pos => {
+          applyPinLocation(pos.coords.latitude, pos.coords.longitude, true);
+          window.dispatchEvent(new CustomEvent('bear-gps-position', { detail: pos }));
+        },
         () => { document.getElementById('coord-info').textContent = '場所が未選択です（地図をタップして指定してください）'; },
         { enableHighAccuracy: true, timeout: 6000 }
       );
@@ -673,13 +676,41 @@ function initEvents() {
     else { this.style.background = '#64748b'; this.textContent = '🙈'; this.title = '熊マーカーを表示'; map.removeLayer(markers); }
   };
   document.getElementById('btn-gps').onclick = () => {
-    if (navigator.geolocation) {
+    if (!window.isSecureContext) {
+      alert('位置情報はHTTPSのサイトで利用してください');
+      return;
+    }
+    if (!navigator.geolocation) {
+      alert('このブラウザーでは位置情報を取得できません');
+      return;
+    }
+    const btn = document.getElementById('btn-gps');
+    btn.disabled = true;
+    const reset = () => { btn.disabled = false; };
+    try {
       navigator.geolocation.getCurrentPosition(pos => {
-        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        reset();
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
         map.flyTo([lat, lng], 13);
         if (userMarker) map.removeLayer(userMarker);
-        userMarker = L.circleMarker([lat, lng], { radius: 8, fillColor: '#2563eb', color: '#fff', weight: 2 }).addTo(map).bindPopup("現在地").openPopup();
-      });
+        userMarker = L.circleMarker([lat, lng], {
+          radius: 8, fillColor: '#2563eb', color: '#fff', weight: 2
+        }).addTo(map).bindPopup('現在地').openPopup();
+        window.dispatchEvent(new CustomEvent('bear-gps-position', { detail: pos }));
+      }, error => {
+        reset();
+        const messages = {
+          1: '位置情報が許可されていません。端末と、このサイトを開いているアプリの位置情報設定を確認してください。',
+          2: '現在地を取得できませんでした。端末の位置情報をオンにして、電波の届く場所で再度試してください。',
+          3: '位置情報の取得がタイムアウトしました。もう一度📍を押してください。'
+        };
+        alert(messages[error.code] || '位置情報の取得に失敗しました');
+        console.warn('GPS取得失敗:', error.code, error.message);
+      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    } catch (error) {
+      reset();
+      alert('位置取得処理を開始できませんでした：' + error.message);
     }
   };
 
@@ -732,3 +763,4 @@ function initEvents() {
     setTimeout(() => { if (map) map.invalidateSize(); }, 260);
   };
 }
+```
