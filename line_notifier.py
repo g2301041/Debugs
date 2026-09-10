@@ -1,5 +1,3 @@
-ファイル名：line\_notifier.py
-
 import json
 import urllib.request
 import urllib.error
