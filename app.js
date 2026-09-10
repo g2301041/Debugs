@@ -616,7 +616,7 @@ function submitPost() {
   if (!pendingLat || !pendingLng) { alert('地図上をタップして場所を指定してください'); return; }
   if (!dateVal) { alert('目撃日時を入力してください'); return; }
 
-  const entry = 
+  const entry = {
     "source": "アプリ投稿",
     "出没情報ID": String(nextId + 1),
     "情報種別": document.getElementById('f-type').value,
