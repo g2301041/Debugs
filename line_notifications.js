@@ -1,178 +1,93 @@
 (() => {
-  const originalFetch = window.fetch.bind(window);
-  const pendingPosts = new Map();
+  // 専用URLのキーを読み取ります。
+  const params = new URLSearchParams(
+    location.hash.slice(1)
+  );
 
-  // 元の投稿内容を変更せず、通知の重複防止IDだけ追加します。
-  window.fetch = async (input, options) => {
-    const url = typeof input === "string"
-      ? new URL(input, location.href)
-      : null;
+  const supplied = params.get("line");
 
-    const isPost =
-      url &&
-      url.origin === location.origin &&
-      url.pathname === "/api/save" &&
-      options?.method?.toUpperCase() === "POST" &&
-      typeof options.body === "string";
-
-    if (!isPost) {
-      return originalFetch(input, options);
-    }
-
-    const body = options.body;
-
-    if (!pendingPosts.has(body)) {
-      pendingPosts.set(body, crypto.randomUUID());
-    }
-
-    const headers = new Headers(options.headers);
-
-    headers.set(
-      "X-Bear-Notification-ID",
-      pendingPosts.get(body)
+  if (supplied) {
+    sessionStorage.setItem(
+      "bear-line-key",
+      supplied
     );
 
-    const response = await originalFetch(input, {
-      ...options,
-      headers
-    });
+    // アドレス欄から専用キーを取り除きます。
+    history.replaceState(
+      null,
+      "",
+      location.pathname + location.search
+    );
+  }
 
-    if (response.ok) {
-      const result = await response
-        .clone()
-        .json()
-        .catch(() => null);
+  const key = sessionStorage.getItem(
+    "bear-line-key"
+  );
 
-      if (result?.success) {
-        pendingPosts.delete(body);
-      }
-    }
+  // 普通のURLで開いた人は、元のサイトをそのまま使えます。
+  if (!key) {
+    return;
+  }
 
-    return response;
-  };
+  const box = document.createElement("div");
 
-  const panel = document.createElement("div");
-
-  panel.style.cssText = [
-    "padding:10px",
+  box.style.cssText = [
+    "padding:8px",
     "background:white",
     "color:#222",
-    "border:1px solid #ddd",
-    "font-size:13px"
+    "font-size:12px"
   ].join(";");
 
-  panel.innerHTML = `
-    <button type="button" data-enable>
-      LINE通知を有効にする
-    </button>
+  const status = document.createElement("p");
 
-    <button type="button" data-disable>
-      通知を停止
-    </button>
+  status.setAttribute(
+    "role",
+    "status"
+  );
 
-    <button type="button" data-login>
-      LINE再ログイン
-    </button>
+  status.textContent =
+    "📍で取得する現在地をLINE通知の判定用に保存します。" +
+    "通知を使う場合は📍を押してください。";
 
-    <a
-      data-friend
-      target="_blank"
-      rel="noopener"
-      hidden
-    >
-      公式LINEを友だち追加
-    </a>
+  const stop = document.createElement("button");
 
-    <p
-      data-status
-      role="status"
-      style="margin:6px 0"
-    ></p>
-  `;
+  stop.type = "button";
+
+  stop.textContent =
+    "LINE通知・位置共有を停止";
+
+  box.append(status, stop);
 
   const host =
     document.querySelector(".action-panel") ||
     document.body;
 
-  host.appendChild(panel);
+  host.appendChild(box);
 
-  const enableButton = panel.querySelector("[data-enable]");
-  const disableButton = panel.querySelector("[data-disable]");
-  const loginButton = panel.querySelector("[data-login]");
-  const friendLink = panel.querySelector("[data-friend]");
-  const status = panel.querySelector("[data-status]");
+  if (!navigator.geolocation) {
+    status.textContent =
+      "この端末では位置情報を取得できません";
 
-  let config;
-  let initialization;
-  let active = false;
-  let busy = false;
-  let timer = null;
-  let generation = 0;
-
-  async function initialize() {
-    if (!initialization) {
-      initialization = (async () => {
-        const response = await originalFetch(
-          "/line-addon/config"
-        );
-
-        if (!response.ok) {
-          throw new Error("通知設定を取得できません");
-        }
-
-        config = await response.json();
-
-        if (!config.liffId) {
-          throw new Error(
-            "管理者によるLINE連携設定が必要です"
-          );
-        }
-
-        if (config.friendUrl?.startsWith("https://")) {
-          friendLink.href = config.friendUrl;
-          friendLink.hidden = false;
-        }
-
-        if (!window.liff) {
-          await new Promise((resolve, reject) => {
-            const script = document.createElement("script");
-
-            script.src =
-              "https://static.line-scdn.net/liff/edge/2/sdk.js";
-
-            script.onload = resolve;
-
-            script.onerror = () => {
-              reject(new Error("LINEを読み込めません"));
-            };
-
-            document.head.appendChild(script);
-          });
-        }
-
-        await liff.init({
-          liffId: config.liffId
-        });
-      })().catch(error => {
-        initialization = null;
-        throw error;
-      });
-    }
-
-    return initialization;
+    return;
   }
 
-  async function post(path, body) {
-    await initialize();
+  const original =
+    navigator.geolocation.getCurrentPosition.bind(
+      navigator.geolocation
+    );
 
-    const token =
-      liff.isLoggedIn() &&
-      liff.getIDToken();
+  let enabled = true;
+  let registered = false;
+  let tracking = false;
+  let busy = false;
+  let chain = Promise.resolve();
+  let lastSent = 0;
 
-    if (!token) {
-      throw new Error("LINEにログインしてください");
-    }
+  // =====================================================
+  // 位置をサーバーに送る
+  // =====================================================
 
+  async function post(body) {
     const controller = new AbortController();
 
     const timeout = setTimeout(() => {
@@ -180,234 +95,188 @@
     }, 20000);
 
     try {
-      const response = await originalFetch(path, {
+      const res = await fetch("/line/location", {
         method: "POST",
         signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "Bearer " + token
+          "X-Line-Location-Key": key
         },
         body: JSON.stringify(body)
       });
 
-      const result = await response.json();
+      const data = await res.json();
 
-      if (!response.ok || !result.success) {
+      if (!res.ok || !data.success) {
         throw new Error(
-          result.message || "通信に失敗しました"
+          data.message ||
+          "位置の保存に失敗しました"
         );
       }
+
+      return data;
     } finally {
       clearTimeout(timeout);
     }
   }
 
-  async function updateLocation(first = false) {
+  // =====================================================
+  // 元のGPS処理から取得した位置を保存
+  // =====================================================
+
+  function capture(position) {
     if (
+      !enabled ||
       busy ||
-      !active ||
-      (!first && document.hidden)
+      Date.now() - lastSent < 50000
     ) {
       return;
     }
 
+    // 古いキャッシュ位置を現在地として登録しません。
+    if (
+      Date.now() - position.timestamp > 60000
+    ) {
+      return;
+    }
+
+    tracking = true;
     busy = true;
 
-    try {
-      if (!navigator.geolocation) {
-        throw new Error(
-          "この端末では位置情報を取得できません"
-        );
-      }
-
-      const position = await new Promise(
-        (resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(
-            resolve,
-            reject,
-            {
-              enableHighAccuracy: true,
-              timeout: 15000,
-              maximumAge: 0
-            }
-          );
+    chain = chain
+      .then(async () => {
+        if (!enabled) {
+          return;
         }
-      );
 
-      if (!active) {
-        return;
-      }
+        const data = await post({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          enable: !registered
+        });
 
-      await post("/line-addon/location", {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        accuracy: position.coords.accuracy,
-        enable: first
+        registered = true;
+        lastSent = Date.now();
+
+        status.textContent =
+          "LINE通知用の位置を更新しました（" +
+          new Date().toLocaleTimeString() +
+          "）。最後の位置は" +
+          data.ttl +
+          "分間有効です。";
+      })
+      .catch(error => {
+        status.textContent = error.message;
+      })
+      .finally(() => {
+        busy = false;
       });
+  }
 
-      sessionStorage.setItem(
-        "bear-line-enabled",
-        "1"
+  // =====================================================
+  // 元のapp.jsのGPS結果をそのまま受け取ります。
+  // 元の地図表示用コールバックも必ず呼びます。
+  // =====================================================
+
+  try {
+    const wrapped = function (
+      success,
+      failure,
+      options
+    ) {
+      return original(
+        position => {
+          try {
+            success(position);
+          } finally {
+            capture(position);
+          }
+        },
+        failure,
+        options
       );
+    };
 
-      status.textContent =
-        "通知有効｜位置更新 " +
-        new Date().toLocaleTimeString() +
-        "。最後の位置は" +
-        config.locationTtlMinutes +
-        "分間有効です。サイトを閉じると位置更新は止まります。";
-    } finally {
-      busy = false;
+    navigator.geolocation.getCurrentPosition =
+      wrapped;
+
+    if (
+      navigator.geolocation.getCurrentPosition !==
+      wrapped
+    ) {
+      throw new Error("連携できません");
     }
+  } catch (_) {
+    status.textContent =
+      "このブラウザーでは位置取得を連携できません";
+
+    return;
   }
 
-  async function startNotifications() {
-    const ownGeneration = ++generation;
+  // =====================================================
+  // GPSを一度使った後は、
+  // サイト表示中に約1分ごとに更新します。
+  // =====================================================
 
-    enableButton.disabled = true;
-
-    try {
-      await initialize();
-
-      if (ownGeneration !== generation) {
-        return;
-      }
-
-      if (!liff.isLoggedIn()) {
-        sessionStorage.setItem(
-          "bear-line-start",
-          "1"
-        );
-
-        liff.login({
-          redirectUri: location.origin + "/"
-        });
-
-        return;
-      }
-
-      const friendship = await liff.getFriendship();
-
-      if (ownGeneration !== generation) {
-        return;
-      }
-
-      if (!friendship.friendFlag) {
-        throw new Error(
-          "公式LINEを友だち追加してから、もう一度有効にしてください"
-        );
-      }
-
-      active = true;
-
-      status.textContent =
-        "現在地を取得しています…";
-
-      await updateLocation(true);
-
-      clearInterval(timer);
-
-      timer = setInterval(() => {
-        updateLocation().catch(error => {
-          status.textContent =
-            "位置更新に失敗：" +
-            error.message +
-            "。最後の位置は有効期限まで使われます。";
-        });
-      }, 60000);
-    } catch (error) {
-      active = false;
-      clearInterval(timer);
-
-      status.textContent =
-        error.message ||
-        "位置情報の利用を許可してください";
-    } finally {
-      enableButton.disabled = false;
+  const timer = setInterval(() => {
+    if (
+      !enabled ||
+      !tracking ||
+      document.hidden ||
+      busy
+    ) {
+      return;
     }
-  }
 
-  enableButton.onclick = startNotifications;
+    original(
+      capture,
+      () => {
+        status.textContent =
+          "位置を更新できません。" +
+          "最後の位置は有効期限まで使われます。";
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
+    );
+  }, 60000);
 
-  disableButton.onclick = async () => {
-    ++generation;
+  // =====================================================
+  // 通知と位置共有の停止
+  // =====================================================
 
-    active = false;
+  stop.onclick = async () => {
+    enabled = false;
+
     clearInterval(timer);
 
-    disableButton.disabled = true;
+    stop.disabled = true;
 
-    // 進行中の位置登録が終わってから停止を保存します。
-    while (busy) {
-      await new Promise(resolve => {
-        setTimeout(resolve, 50);
-      });
-    }
+    // 進行中の位置送信が終わってから停止します。
+    await chain;
 
     try {
-      await post("/line-addon/disable", {});
+      await post({
+        stop: true
+      });
 
-      sessionStorage.removeItem("bear-line-enabled");
-      sessionStorage.removeItem("bear-line-start");
+      sessionStorage.removeItem(
+        "bear-line-key"
+      );
 
       status.textContent =
-        "通知を停止しました。送信済みの通知は取り消せません。";
+        "通知と位置共有を停止しました。" +
+        "再開する場合は専用URLを開き直してください。";
     } catch (error) {
       status.textContent =
         "停止を保存できません：" +
         error.message +
-        "。再度停止してください。";
-    } finally {
-      disableButton.disabled = false;
+        "。もう一度停止してください。";
+
+      stop.disabled = false;
     }
   };
-
-  loginButton.onclick = async () => {
-    try {
-      await initialize();
-
-      if (liff.isLoggedIn()) {
-        liff.logout();
-      }
-
-      sessionStorage.setItem(
-        "bear-line-start",
-        "1"
-      );
-
-      liff.login({
-        redirectUri: location.origin + "/"
-      });
-    } catch (error) {
-      status.textContent = error.message;
-    }
-  };
-
-  document.addEventListener(
-    "visibilitychange",
-    () => {
-      if (active && !document.hidden) {
-        updateLocation().catch(error => {
-          status.textContent = error.message;
-        });
-      }
-    }
-  );
-
-  initialize()
-    .then(() => {
-      status.textContent =
-        "有効にすると現在地を保存し、周辺5kmの新着情報をLINEで受け取れます。";
-
-      if (
-        sessionStorage.getItem("bear-line-start") ||
-        sessionStorage.getItem("bear-line-enabled")
-      ) {
-        sessionStorage.removeItem("bear-line-start");
-        startNotifications();
-      }
-    })
-    .catch(error => {
-      status.textContent = error.message;
-    });
 })();
