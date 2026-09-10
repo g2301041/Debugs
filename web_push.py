@@ -8,6 +8,8 @@ import secrets
 import sys
 import time
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from urllib.parse import urlsplit
 
 
@@ -75,6 +77,9 @@ def validate_subscription(sub):
 
 def init_push_db():
     with database() as cur:
+        cur.execute('''CREATE TABLE IF NOT EXISTS bp_vapid (
+            singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK(singleton),
+            private_key TEXT NOT NULL, public_key TEXT NOT NULL)''')
         cur.execute('''CREATE TABLE IF NOT EXISTS bp_devices (
             token_hash TEXT PRIMARY KEY, endpoint TEXT UNIQUE NOT NULL,
             subscription JSONB NOT NULL, settings JSONB NOT NULL,
@@ -92,8 +97,38 @@ def init_push_db():
             UNIQUE(token_hash, event_key))''')
         cur.execute('CREATE INDEX IF NOT EXISTS bp_jobs_due ON bp_jobs(state, due_at)')
         # Supabaseの公開APIから位置情報・通知先を読ませない。
-        for table in ('bp_devices', 'bp_events', 'bp_jobs'):
+        for table in ('bp_vapid', 'bp_devices', 'bp_events', 'bp_jobs'):
             cur.execute(f'ALTER TABLE {table} ENABLE ROW LEVEL SECURITY')
+
+
+def make_vapid_pair():
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import serialization as s
+    key = ec.generate_private_key(ec.SECP256R1())
+    encode = lambda value: base64.urlsafe_b64encode(value).decode().rstrip('=')
+    return (encode(key.private_bytes(s.Encoding.DER, s.PrivateFormat.PKCS8, s.NoEncryption())),
+            encode(key.public_key().public_bytes(s.Encoding.X962, s.PublicFormat.UncompressedPoint)))
+
+
+@lru_cache(maxsize=1)
+def vapid_settings():
+    private = os.environ.get('VAPID_PRIVATE_KEY', '')
+    public = os.environ.get('VAPID_PUBLIC_KEY', '')
+    if bool(private) != bool(public):
+        raise ValueError('VAPID_PRIVATE_KEYとVAPID_PUBLIC_KEYは両方設定するか、両方未設定にしてください')
+    if not private:
+        with database() as cur:
+            cur.execute('SELECT private_key,public_key FROM bp_vapid WHERE singleton=TRUE')
+            row = cur.fetchone()
+            if row is None:
+                pair = make_vapid_pair()
+                cur.execute('INSERT INTO bp_vapid(singleton,private_key,public_key) '
+                            'VALUES(TRUE,%s,%s) ON CONFLICT DO NOTHING', pair)
+                cur.execute('SELECT private_key,public_key FROM bp_vapid WHERE singleton=TRUE')
+                row = cur.fetchone()
+            private, public = row
+    subject = os.environ.get('VAPID_SUBJECT') or 'https://test-m7ms.onrender.com/'
+    return private, public, subject
 
 
 def enqueue(cur, entry, event_key, notify=True):
@@ -136,11 +171,14 @@ def install_push(app):
 
     @app.get('/api/push/config')
     def config():
-        key = os.environ.get('VAPID_PUBLIC_KEY', '')
-        missing = [name for name in ('VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT')
-                   if not os.environ.get(name)]
-        response = jsonify(publicKey=key, ready=not missing, missing=missing,
-                           version='20260910-fix1')
+        try:
+            _, key, _ = vapid_settings()
+            response = jsonify(publicKey=key, ready=True, version='20260910-free1', mode='on_request')
+        except ValueError as error:
+            response = jsonify(publicKey='', ready=False, error=str(error), version='20260910-free1')
+        except Exception:
+            response = jsonify(publicKey='', ready=False,
+                               error='通知用の鍵をデータベースから準備できませんでした。', version='20260910-free1')
         response.headers['Cache-Control'] = 'no-store'
         return response
 
@@ -189,9 +227,16 @@ def install_push(app):
             payload = json.dumps({'title': 'ベアウェザー 通知テスト',
                                   'body': 'この端末への通知が届きました。',
                                   'tag': 'test-' + secrets.token_hex(8), 'url': '/'})
+            event_key = 'test:' + secrets.token_hex(16)
             cur.execute('INSERT INTO bp_jobs(token_hash,event_key,payload) VALUES (%s,%s,%s)',
-                        (token, 'test:' + secrets.token_hex(16), payload))
-        return jsonify(success=True)
+                        (token, event_key, payload))
+        # DBの保存完了後、このリクエスト中に実際に送信する。
+        return jsonify(success=True, delivery=dispatch_pending(event_key=event_key))
+
+    @app.post('/api/push/retry')
+    def retry():
+        token = owner()
+        return jsonify(success=True, delivery=dispatch_pending(token_hash=token))
 
     @app.get('/api/push/status')
     def status():
@@ -202,14 +247,17 @@ def install_push(app):
         return jsonify(state=row[0] if row else 'none', error=row[1] if row else None)
 
 
-def deliver_one():
+def deliver_one(job_id=None):
     from pywebpush import webpush, WebPushException
+    private_key, _, subject = vapid_settings()
     with database() as cur:
+        extra = ' AND j.id=%s' if job_id is not None else ''
         cur.execute('''SELECT j.id,j.payload,j.attempts,d.subscription,d.enabled,
             j.created_at < now()-interval '1 hour', j.token_hash
             FROM bp_jobs j JOIN bp_devices d USING(token_hash)
-            WHERE j.state='pending' AND j.due_at<=now()
-            ORDER BY j.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED''')
+            WHERE j.state='pending' AND j.due_at<=now()''' + extra + '''
+            ORDER BY j.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED''',
+                    (job_id,) if job_id is not None else ())
         row = cur.fetchone()
         if not row:
             return False
@@ -228,8 +276,8 @@ def deliver_one():
                 with PushSession() as session:
                     response = webpush(validate_subscription(sub),
                         data=json.dumps(payload, ensure_ascii=False),
-                        vapid_private_key=os.environ['VAPID_PRIVATE_KEY'],
-                        vapid_claims={'sub': os.environ['VAPID_SUBJECT']},
+                        vapid_private_key=private_key,
+                        vapid_claims={'sub': subject},
                         ttl=3600, timeout=10, requests_session=session)
                 if not 200 <= response.status_code < 300:
                     raise ValueError('unexpected response')
@@ -246,23 +294,56 @@ def deliver_one():
         return True
 
 
+def dispatch_pending(event_key=None, token_hash=None):
+    """保存後に送信し終わるまで待つ。別プロセスや常駐ワーカーは不要。"""
+    if (event_key is None) == (token_hash is None):
+        raise ValueError('通知イベントか端末のどちらかを指定してください')
+    try:
+        vapid_settings()
+    except Exception:
+        return 'not_configured'
+    column, value = ('event_key', event_key) if event_key is not None else ('token_hash', token_hash)
+    try:
+        with database() as cur:
+            cur.execute(f"SELECT id FROM bp_jobs WHERE {column}=%s "
+                        "AND state='pending' AND due_at<=now() ORDER BY id", (value,))
+            ids = [row[0] for row in cur.fetchall()]
+        # 全員分を対象にする。大量配信向けではなく、小規模利用を想定。
+        # ワーカーというサービスは作らず、同じHTTPリクエスト内で完了を待つ。
+        if ids:
+            def send(job_id):
+                try:
+                    return deliver_one(job_id)
+                except Exception as error:
+                    print('Push delivery:', type(error).__name__, flush=True)
+                    return False
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                completed = list(executor.map(send, ids))
+            if not all(completed):
+                return 'pending'
+        with database() as cur:
+            cur.execute(f'SELECT state FROM bp_jobs WHERE {column}=%s', (value,))
+            states = [row[0] for row in cur.fetchall()]
+        if not states:
+            return 'none'
+        if 'pending' in states:
+            return 'pending'
+        if 'failed' in states:
+            return 'failed'
+        if 'accepted' in states:
+            return 'accepted'
+        return states[0]
+    except Exception as error:
+        # 熊情報は既にコミット済み。通知失敗を投稿の保存失敗として返さない。
+        print('Push dispatch:', type(error).__name__, flush=True)
+        return 'pending'
+
+
 if __name__ == '__main__':
     if '--keys' in sys.argv:
-        from cryptography.hazmat.primitives.asymmetric import ec
-        from cryptography.hazmat.primitives import serialization as s
-        key = ec.generate_private_key(ec.SECP256R1())
-        encode = lambda value: base64.urlsafe_b64encode(value).decode().rstrip('=')
-        print('VAPID_PRIVATE_KEY=' + encode(key.private_bytes(s.Encoding.DER, s.PrivateFormat.PKCS8, s.NoEncryption())))
-        print('VAPID_PUBLIC_KEY=' + encode(key.public_key().public_bytes(s.Encoding.X962, s.PublicFormat.UncompressedPoint)))
+        private, public = make_vapid_pair()
+        print('VAPID_PRIVATE_KEY=' + private)
+        print('VAPID_PUBLIC_KEY=' + public)
     else:
-        for name in ('DATABASE_URL', 'VAPID_PRIVATE_KEY', 'VAPID_PUBLIC_KEY', 'VAPID_SUBJECT'):
-            if not os.environ.get(name):
-                raise SystemExit(f'{name} を設定してください')
-        init_push_db()
-        while True:
-            try:
-                if not deliver_one():
-                    time.sleep(3)
-            except Exception as exc:
-                print('Push worker:', type(exc).__name__, flush=True)
-                time.sleep(10)
+        print('無料構成ではこのファイルを常駐させません。server.pyから投稿時に送信します。')
+        print('鍵を作成する場合: python web_push.py --keys')
