@@ -3,23 +3,33 @@
   const STORE = 'bear-web-push-v1';
   let state;
   try { state = JSON.parse(localStorage.getItem(STORE)); } catch (_) {}
-  if (!state) state = { last: null, fixed: null, lastAt: '', enabled: false };
+  if (!state || typeof state !== 'object' || Array.isArray(state)) state = { last: null, fixed: null, lastAt: '', enabled: false };
   if (!state.token) {
     state.token = Array.from(crypto.getRandomValues(new Uint8Array(32)),
       b => b.toString(16).padStart(2, '0')).join('');
   }
   const persist = () => localStorage.setItem(STORE, JSON.stringify(state));
   let registration, config, dialog, message, description;
-  const show = text => { message.textContent = text; };
+  const show = text => {
+    if (message) message.textContent = text;
+    const status = document.getElementById('push-load-status');
+    if (status) status.textContent = text;
+  };
+  function limited(promise, text, ms = 20000) {
+    let timer;
+    return Promise.race([promise, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(Error(text)), ms);
+    })]).finally(() => clearTimeout(timer));
+  }
   async function api(path, method = 'GET', data) {
-    const response = await fetch('/api/push/' + path, {
+    const response = await limited(fetch('/api/push/' + path, {
       method, headers: { 'Content-Type': 'application/json',
         Authorization: 'Bearer ' + state.token },
       body: data === undefined ? undefined : JSON.stringify(data)
-    });
+    }), 'サーバーの応答がありません。少し待ってページを開き直してください。');
     let result;
-    try { result = await response.json(); } catch (_) { throw Error('サーバーの応答を確認できません'); }
-    if (!response.ok) throw Error(result.error || '通信に失敗しました');
+    try { result = await limited(response.json(), '応答の読み込みが時間切れです'); } catch (_) { throw Error('サーバーの応答を確認できません。HTTP ' + response.status); }
+    if (!response.ok) throw Error(result.error || ('通信に失敗しました。HTTP ' + response.status));
     return result;
   }
   function describe() {
@@ -66,6 +76,7 @@
     message.style.whiteSpace = 'pre-line';
     dialog.append(description, message); document.body.append(dialog);
     open.onclick = () => { describe(); dialog.showModal(); };
+    show('通知機能を読み込み中…');
     describe();
     if (!window.isSecureContext || !('serviceWorker' in navigator)
         || !('PushManager' in window) || !('Notification' in window)) {
@@ -106,15 +117,21 @@
       });
     }
     button('通知を有効にする', async () => {
+      show('通知の設定を確認しています…');
       if (!state.last && !state.fixed) throw Error('先に最終位置か指定場所を設定してください');
       if (!registration || !config?.ready) throw Error('サーバーの通知設定が未完了です。管理者に確認してください');
+      if (Notification.permission === 'denied') throw Error('通知はブロックされています。端末またはブラウザーのこのサイトの通知設定で許可してから、開き直してください。');
       // iPhoneでも許可画面が出るよう、クリック直後に呼ぶ。
-      if (await Notification.requestPermission() !== 'granted') throw Error('通知が許可されていません');
-      let sub = await registration.pushManager.getSubscription();
+      show('通知の許可を確認中です。端末の許可画面を確認してください。');
+      const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      if (permission !== 'granted') throw Error('通知はまだ許可されていません。許可画面を閉じた場合は、もう一度お試しください。');
+      show('通知は許可されています。通知先を登録しています…');
+      let sub = await limited(registration.pushManager.getSubscription(), '通知先の取得が時間切れです。ページを開き直してください。');
       if (!sub) {
         const raw = config.publicKey.replace(/-/g, '+').replace(/_/g, '/');
         const bytes = Uint8Array.from(atob(raw + '='.repeat((4 - raw.length % 4) % 4)), c => c.charCodeAt(0));
-        sub = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes });
+        sub = await limited(registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes }),
+          '通知先の登録が時間切れです。通信状態を確認して、もう一度お試しください。');
       }
       await api('device', 'POST', { ...state, subscription: sub.toJSON() });
       state.enabled = true; persist(); show('通知を有効にしました。テスト通知で確認してください。');
@@ -136,13 +153,16 @@
     button('閉じる', () => dialog.close());
     window.addEventListener('bear-gps-position', event => setLast(event.detail));
     try {
-      registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-      registration = await navigator.serviceWorker.ready;
       config = await api('config');
-      if (!config.ready) throw Error('サーバーのVAPID設定が未完了です');
+      if (!config.ready) throw Error('管理者による通知設定が必要です。未設定：' + (config.missing || ['VAPID設定']).join('、'));
+      registration = await limited(navigator.serviceWorker.register('/sw.js', { scope: '/' }), '通知機能を読み込めません。sw.jsの配置を確認してください。');
+      registration = await limited(navigator.serviceWorker.ready, '通知機能の起動が時間切れです。sw.jsの配置を確認してページを開き直してください。');
       await sync();
+      show(Notification.permission === 'denied' ? '端末側で通知がブロックされています。通知設定を確認してください。' :
+        '通知機能の読み込みが完了しました。場所を設定して「通知を有効にする」を押してください。');
     } catch (error) { show(error.message); }
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-  else start();
+  const run = () => start().catch(error => show('通知機能を開始できません：' + error.message));
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+  else run();
 })();
