@@ -130,7 +130,11 @@ def vapid_settings():
                 cur.execute('SELECT private_key,public_key FROM bp_vapid WHERE singleton=TRUE')
                 row = cur.fetchone()
             private, public = row
-    subject = os.environ.get('VAPID_SUBJECT') or 'https://test-m7ms.onrender.com/'
+    # py-vapidの連絡先URL検証は末尾の / を拒否するため取り除く。
+    # 鍵は変更しないので、既存の通知登録をそのまま利用できる。
+    subject = (os.environ.get('VAPID_SUBJECT') or 'https://test-m7ms.onrender.com').strip()
+    if subject.startswith('https://'):
+        subject = subject.rstrip('/')
     return private, public, subject
 
 
