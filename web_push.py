@@ -61,7 +61,10 @@ def validate_subscription(sub):
     host = url.hostname or ''
     allowed = (host in {'fcm.googleapis.com', 'web.push.apple.com',
                        'updates.push.services.mozilla.com'}
-               or host.endswith('.push.services.mozilla.com'))
+               or host.endswith('.push.services.mozilla.com')
+               or host.endswith('.push.apple.com')
+               or host == 'notify.windows.com'
+               or host.endswith('.notify.windows.com'))
     if not (url.scheme == 'https' and url.port in (None, 443)
             and not url.username and not url.password and allowed
             and not url.fragment and len(sub['endpoint']) < 4096):
@@ -173,12 +176,12 @@ def install_push(app):
     def config():
         try:
             _, key, _ = vapid_settings()
-            response = jsonify(publicKey=key, ready=True, version='20260910-free1', mode='on_request')
+            response = jsonify(publicKey=key, ready=True, version='20260910-free2', mode='on_request')
         except ValueError as error:
-            response = jsonify(publicKey='', ready=False, error=str(error), version='20260910-free1')
+            response = jsonify(publicKey='', ready=False, error=str(error), version='20260910-free2')
         except Exception:
             response = jsonify(publicKey='', ready=False,
-                               error='通知用の鍵をデータベースから準備できませんでした。', version='20260910-free1')
+                               error='通知用の鍵をデータベースから準備できませんでした。', version='20260910-free2')
         response.headers['Cache-Control'] = 'no-store'
         return response
 
@@ -199,7 +202,9 @@ def install_push(app):
             settings['lastAt'] = str(body.get('lastAt', ''))[:40]
             if not settings['last'] and not settings['fixed']:
                 raise ValueError('最終位置か指定場所を設定してください')
-        except (ValueError, TypeError, KeyError, AttributeError):
+        except ValueError as error:
+            return jsonify(error=str(error)), 400
+        except (TypeError, KeyError, AttributeError):
             return jsonify(error='通知先または位置情報が不正です'), 400
         with database() as cur:
             cur.execute('SELECT token_hash FROM bp_devices WHERE endpoint=%s', (sub['endpoint'],))
@@ -274,11 +279,14 @@ def deliver_one(job_id=None):
                         kwargs['allow_redirects'] = False
                         return super().request(*args, **kwargs)
                 with PushSession() as session:
+                    endpoint_host = urlsplit(sub['endpoint']).hostname or ''
+                    windows = endpoint_host == 'notify.windows.com' or endpoint_host.endswith('.notify.windows.com')
+                    headers = {'X-WNS-Type': 'wns/raw', 'X-WNS-Cache-Policy': 'cache'} if windows else {}
                     response = webpush(validate_subscription(sub),
                         data=json.dumps(payload, ensure_ascii=False),
                         vapid_private_key=private_key,
                         vapid_claims={'sub': subject},
-                        ttl=3600, timeout=10, requests_session=session)
+                        ttl=3600, timeout=10, requests_session=session, headers=headers)
                 if not 200 <= response.status_code < 300:
                     raise ValueError('unexpected response')
             except Exception as exc:
