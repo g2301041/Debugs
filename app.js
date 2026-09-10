@@ -88,6 +88,11 @@ function saveEntryToServer(entry, onDone) {
   .then(res => res.json())
   .then(resData => {
     if (onDone) onDone(!!resData.success, resData.message || '');
+    if (resData.success) {
+      window.dispatchEvent(new CustomEvent('bear-post-notification', {
+        detail: resData.notification || 'unknown'
+      }));
+    }
   })
   .catch(err => {
     console.error("サーバー通信失敗:", err);
