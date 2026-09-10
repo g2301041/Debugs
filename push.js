@@ -34,7 +34,10 @@
   }
   function describe() {
     const point = p => p ? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : '未設定';
-    description.textContent = `通知：${state.enabled ? '有効' : '停止中'}\n`
+    const permission = 'Notification' in window ? Notification.permission : 'unsupported';
+    const permissionText = {granted:'許可済み', denied:'ブロック中', default:'未許可', unsupported:'この開き方では未対応'};
+    description.textContent = `① ブラウザーの通知許可：${permissionText[permission] || '確認中'}\n`
+      + `② サイトへの通知先登録：${state.enabled ? '完了' : '未完了（下の「通知を有効にする」を押してください）'}\n`
       + `最終位置：${point(state.last)}\n`
       + (state.lastAt ? `取得日時：${new Date(state.lastAt).toLocaleString()}\n` : '')
       + `指定場所：${point(state.fixed)}\nどちらかから5km以内の新しい情報を通知します。`;
@@ -80,7 +83,19 @@
     describe();
     if (!window.isSecureContext || !('serviceWorker' in navigator)
         || !('PushManager' in window) || !('Notification' in window)) {
-      show('この環境ではWebプッシュを利用できません。HTTPSで開いてください。iPhoneはホーム画面に追加し、そのアイコンから開いてください。');
+      const apple = /iPhone|iPad|iPod/.test(navigator.userAgent || '')
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (!window.isSecureContext) {
+        show('通知にはHTTPSが必要です。https://test-m7ms.onrender.com/ から開いてください。');
+      } else if (apple) {
+        show('iPhone・iPadでページを閉じた後も通知を受けるには、ホーム画面への追加が必要です。\n'
+          + 'App Storeからのインストールは不要です。\n'
+          + '① Safariでこのサイトを開く\n② 共有ボタン →「ホーム画面に追加」→「追加」\n'
+          + '③ 追加したアイコンから開き、「通知を有効にする」を押す\n'
+          + 'iOS/iPadOS 16.4以降が必要です。すでに追加済みなら、そのアイコンから開いてください。');
+      } else {
+        show('このブラウザーではWebプッシュを利用できません。Androidでは最新のChromeで直接開いてください。PCでは通常のChromeまたはEdgeで確認してください。');
+      }
       button('閉じる', () => dialog.close()); return;
     }
     button('現在の位置を取得する', () => {
@@ -137,6 +152,7 @@
       state.enabled = true; persist(); show('通知を有効にしました。テスト通知で確認してください。');
     });
     button('テスト通知を送る', async () => {
+      if (!state.enabled) throw Error('ブラウザーで許可しただけでは登録は完了しません。先に、この画面の「通知を有効にする」を押してください。');
       show('テスト通知を送信中…');
       const result = await api('test', 'POST', {});
       showDelivery(result.delivery);
@@ -171,13 +187,14 @@
     });
     try {
       config = await api('config');
-      if (config.version !== '20260910-free1') throw Error('サーバーが無料版に更新されていません。server.py・web_push.pyのデプロイを確認してください。');
+      if (!['20260910-free1', '20260910-free2'].includes(config.version)) throw Error('サーバーが無料版に更新されていません。server.py・web_push.pyのデプロイを確認してください。');
       if (!config.ready) throw Error(config.error || '通知用の鍵を準備できませんでした。');
       registration = await limited(navigator.serviceWorker.register('/sw.js', { scope: '/' }), '通知機能を読み込めません。sw.jsの配置を確認してください。');
       registration = await limited(navigator.serviceWorker.ready, '通知機能の起動が時間切れです。sw.jsの配置を確認してページを開き直してください。');
       await sync();
       show(Notification.permission === 'denied' ? '端末側で通知がブロックされています。通知設定を確認してください。' :
-        '通知機能の読み込みが完了しました。場所を設定して「通知を有効にする」を押してください。');
+        state.enabled ? '通知先の登録を確認しました。「テスト通知を送る」で確認してください。' :
+        '通知機能の読み込みが完了しました。場所を設定して、この画面の「通知を有効にする」を押してください。');
     } catch (error) { show(error.message); }
   }
   function showDelivery(state) {
