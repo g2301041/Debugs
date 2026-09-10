@@ -83,11 +83,26 @@ def check_and_send_line_notification(item_data, user_lat=BASE_LAT, user_lng=BASE
     print(f"⭕ 【条件クリア】 5km以内のため（{distance_rounded}km）、LINE通知を送信します。")
 
     # 3. 投稿データの各項目を抽出（なければデフォルト値）
-    date_str = item_data.get("date") or datetime.now().strftime("%Y年%m月%d日 %H:%M")
-    location_str = item_data.get("location") or item_data.get("address") or "場所情報なし"
-    status_str = item_data.get("status") or item_data.get("type") or "目撃情報"
-    detail_str = item_data.get("detail") or item_data.get("comment") or "詳細情報なし"
-    source_str = item_data.get("source") or "アプリ投稿"
+    date_str = item_data.get("目撃日時") or item_data.get("date") or "日時不明"
+    location_str = (
+        item_data.get("地番情報")
+        or item_data.get("location")
+        or item_data.get("address")
+        or "場所情報なし"
+    )
+    status_str = (
+        item_data.get("情報種別")
+        or item_data.get("status")
+        or item_data.get("type")
+        or "目撃情報"
+    )
+    detail_str = (
+        item_data.get("目撃時の状況")
+        or item_data.get("detail")
+        or item_data.get("comment")
+        or "詳細情報なし"
+    )
+    source_str = item_data.get("source") or "情報元未設定"
 
     # 4. メッセージの組み立て
     message_text = f"""⚠️ 【クマ出没・警戒通知】 ⚠️
