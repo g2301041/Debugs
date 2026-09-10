@@ -617,7 +617,6 @@ function submitPost() {
   if (!dateVal) { alert('目撃日時を入力してください'); return; }
 
   const entry = {
-    "source": "アプリ投稿",
     "出没情報ID": String(nextId + 1),
     "情報種別": document.getElementById('f-type').value,
     "市町村": city,
