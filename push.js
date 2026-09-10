@@ -26,7 +26,7 @@
       method, headers: { 'Content-Type': 'application/json',
         Authorization: 'Bearer ' + state.token },
       body: data === undefined ? undefined : JSON.stringify(data)
-    }), 'サーバーの応答がありません。少し待ってページを開き直してください。');
+    }), 'サーバーの応答がありません。少し待ってページを開き直してください。', path === 'retry' ? 110000 : 20000);
     let result;
     try { result = await limited(response.json(), '応答の読み込みが時間切れです'); } catch (_) { throw Error('サーバーの応答を確認できません。HTTP ' + response.status); }
     if (!response.ok) throw Error(result.error || ('通信に失敗しました。HTTP ' + response.status));
@@ -119,7 +119,7 @@
     button('通知を有効にする', async () => {
       show('通知の設定を確認しています…');
       if (!state.last && !state.fixed) throw Error('先に最終位置か指定場所を設定してください');
-      if (!registration || !config?.ready) throw Error('サーバーの通知設定が未完了です。管理者に確認してください');
+      if (!registration || !config?.ready) throw Error('通知機能の準備が完了していません。画面に出ているエラーを確認してページを開き直してください。');
       if (Notification.permission === 'denied') throw Error('通知はブロックされています。端末またはブラウザーのこのサイトの通知設定で許可してから、開き直してください。');
       // iPhoneでも許可画面が出るよう、クリック直後に呼ぶ。
       show('通知の許可を確認中です。端末の許可画面を確認してください。');
@@ -137,11 +137,18 @@
       state.enabled = true; persist(); show('通知を有効にしました。テスト通知で確認してください。');
     });
     button('テスト通知を送る', async () => {
-      await api('test', 'POST', {}); show('テストを送信待ちに登録しました。数秒後に「送信状況」を確認できます。');
+      show('テスト通知を送信中…');
+      const result = await api('test', 'POST', {});
+      showDelivery(result.delivery);
+    });
+    button('送信待ちを再送する', async () => {
+      show('この端末の送信待ち通知を再送中…');
+      const result = await api('retry', 'POST', {});
+      showDelivery(result.delivery);
     });
     button('送信状況を確認', async () => {
       const result = await api('status');
-      show(({none:'まだ通知対象の情報がありません。',pending:'送信待ちです。長く続く場合は通知ワーカーを確認してください。',
+      show(({none:'まだ通知対象の情報がありません。',pending:'送信待ちです。少し待って「送信待ちを再送する」を押してください。',
         accepted:'通知サービスが受け付けました。端末での表示は端末の設定・通信状態によります。',
         failed:'送信に失敗しました。',cancelled:'通知を取り消しました。',expired:'送信待ちのまま1時間が経過しました。'})[result.state]
         + (result.error ? '\n' + result.error : ''));
@@ -152,15 +159,34 @@
     });
     button('閉じる', () => dialog.close());
     window.addEventListener('bear-gps-position', event => setLast(event.detail));
+    window.addEventListener('bear-post-notification', event => {
+      const messages = {
+        accepted: '投稿を保存し、通知サービスへの送信を完了しました。',
+        none: '投稿を保存しました。5km以内に通知対象の登録端末がありません。',
+        pending: '投稿は保存済みです。通知の送信待ちが残っています。',
+        failed: '投稿は保存済みですが、通知の送信に失敗しました。',
+        not_configured: '投稿は保存済みですが、通知用の鍵を準備できませんでした。'
+      };
+      show(messages[event.detail] || '投稿は保存済みです。通知サーバーが無料版に更新されているか確認してください。');
+    });
     try {
       config = await api('config');
-      if (!config.ready) throw Error('管理者による通知設定が必要です。未設定：' + (config.missing || ['VAPID設定']).join('、'));
+      if (config.version !== '20260910-free1') throw Error('サーバーが無料版に更新されていません。server.py・web_push.pyのデプロイを確認してください。');
+      if (!config.ready) throw Error(config.error || '通知用の鍵を準備できませんでした。');
       registration = await limited(navigator.serviceWorker.register('/sw.js', { scope: '/' }), '通知機能を読み込めません。sw.jsの配置を確認してください。');
       registration = await limited(navigator.serviceWorker.ready, '通知機能の起動が時間切れです。sw.jsの配置を確認してページを開き直してください。');
       await sync();
       show(Notification.permission === 'denied' ? '端末側で通知がブロックされています。通知設定を確認してください。' :
         '通知機能の読み込みが完了しました。場所を設定して「通知を有効にする」を押してください。');
     } catch (error) { show(error.message); }
+  }
+  function showDelivery(state) {
+    show(({accepted:'通知サービスが受け付けました。端末の通知欄を確認してください。',
+      pending:'送信待ちが残っています。少し待って「送信待ちを再送する」を押してください。',
+      failed:'通知の送信に失敗しました。「送信状況を確認」でエラーを確認してください。',
+      not_configured:'通知用の鍵を準備できませんでした。ページを開き直して設定状態を確認してください。',
+      none:'送信対象の通知はありません。',cancelled:'通知は停止されています。',expired:'通知の送信期限が過ぎています。'})[state]
+      || '「送信状況を確認」で結果を確認してください。');
   }
   const run = () => start().catch(error => show('通知機能を開始できません：' + error.message));
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
