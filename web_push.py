@@ -17,6 +17,24 @@ def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def safe_push_error(exc, code=None):
+    if code is not None:
+        return f'HTTP {code}'
+    if type(exc).__name__ == 'VapidException':
+        # 例外の全文には鍵やURLが含まれる可能性があるので公開しない。
+        detail = str(exc)
+        if "Missing 'sub'" in detail:
+            reason = '連絡先設定 VAPID_SUBJECT の形式が不正です'
+        elif "Missing 'aud'" in detail:
+            reason = '通知サービスの認証先URLの形式が不正です'
+        elif 'No private key' in detail:
+            reason = '通知用の秘密鍵を読み込めません'
+        else:
+            reason = '通知用の認証設定を処理できません'
+        return 'VapidException [診断版1]: ' + reason
+    return type(exc).__name__
+
+
 @contextmanager
 def database():
     import psycopg2
@@ -180,7 +198,7 @@ def install_push(app):
     def config():
         try:
             _, key, _ = vapid_settings()
-            response = jsonify(publicKey=key, ready=True, version='20260910-free2', mode='on_request')
+            response = jsonify(publicKey=key, ready=True, version='20260910-free2', mode='on_request', diagnosticRevision='vapid-diagnostic-1')
         except ValueError as error:
             response = jsonify(publicKey='', ready=False, error=str(error), version='20260910-free2')
         except Exception:
@@ -296,8 +314,10 @@ def deliver_one(job_id=None):
             except Exception as exc:
                 if isinstance(exc, WebPushException) and exc.response is not None:
                     code = exc.response.status_code
-                error = f'HTTP {code}' if code else type(exc).__name__
+                error = safe_push_error(exc, code)
                 state = 'pending' if attempts < 7 and (code is None or code in (429, 500, 502, 503, 504)) else 'failed'
+                if type(exc).__name__ == 'VapidException':
+                    state = 'failed'  # 設定エラーは待ち続けても解消しない。
                 if code in (404, 410):
                     cur.execute('UPDATE bp_devices SET enabled=FALSE WHERE token_hash=%s', (token,))
         cur.execute('''UPDATE bp_jobs SET state=%s,error=%s,attempts=attempts+1,
