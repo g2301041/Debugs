@@ -47,8 +47,24 @@ def check_and_send_line_notification(item_data, user_lat=BASE_LAT, user_lng=BASE
     """
     try:
         # 投稿データの緯度経度を取得
-        item_lat = float(item_data.get("lat", 0))
-        item_lng = float(item_data.get("lng", 0))
+        lat_raw = item_data.get("x(緯度)")
+        lng_raw = item_data.get("y(経度)")
+
+        if lat_raw is None:
+            lat_raw = item_data.get("lat")
+        if lng_raw is None:
+            lng_raw = item_data.get("lng")
+
+        item_lat = float(lat_raw)
+        item_lng = float(lng_raw)
+
+        if not (
+            math.isfinite(item_lat)
+            and math.isfinite(item_lng)
+            and -90 <= item_lat <= 90
+            and -180 <= item_lng <= 180
+        ):
+            raise ValueError("座標の範囲が不正です")
     except (ValueError, TypeError):
         print("⚠️ 投稿データの緯度・経度が不適切です。通知処理をスキップします。")
         return False
